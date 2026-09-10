@@ -1,8 +1,10 @@
-﻿#include "Character/LobbyCharacter.h"
+#include "Character/LobbyCharacter.h"
 #include "EnhancedInputComponent.h"
 #include "PlayerController/MainGamePlayerController.h"
 #include "InputActionValue.h"
 #include "Camera/CameraComponent.h"
+#include "Components/CapsuleComponent.h"
+#include "GameFramework/CharacterMovementComponent.h"
 #include "GroomComponent.h"
 #include "Interface/InteractableInterface.h"
 #include "Animation/AnimInstance.h"
@@ -392,6 +394,7 @@ void ALobbyCharacter::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutL
 
 	// bIsSitting 변수를 멀티플레이 환경에서 동기화
 	DOREPLIFETIME(ALobbyCharacter, bIsSitting);
+	DOREPLIFETIME(ALobbyCharacter, bIsSittingEnded);
 	DOREPLIFETIME(ALobbyCharacter, GunHoldReason);
 	DOREPLIFETIME(ALobbyCharacter, DeskRevolver);
 	DOREPLIFETIME(ALobbyCharacter, ReplicatedAim);
@@ -617,6 +620,42 @@ void ALobbyCharacter::ReturnRevolverToDesk()
 	}
 }
 
+// 즉시 착석과 앉기 몽타주 종료에서 함께 사용하는 상태 처리 함수
+void ALobbyCharacter::CompleteSeatedState()
+{
+	bIsSitting = true;
+	bIsSittingEnded = true;
+	GetCharacterMovement()->StopMovementImmediately();
+	GetCharacterMovement()->DisableMovement();
+	bUseControllerRotationYaw = false;
+}
+
+void ALobbyCharacter::InitPCSeatedAtSeat(ASeatActor* TargetSeat)
+{
+	if (!HasAuthority() || !TargetSeat || !TargetSeat->SitTarget) return;
+
+	// 좌석 및 좌석의 총 지정
+	CurrentSeat = TargetSeat;
+	DeskRevolver = TargetSeat->DeskRevolver;
+
+	FVector Location = TargetSeat->SitTarget->GetComponentLocation();
+	Location.Z += GetCapsuleComponent()->GetScaledCapsuleHalfHeight() + PCSeatHeightOffset;
+	const FRotator Rotation(0.0f, TargetSeat->SitTarget->GetComponentRotation().Yaw, 0.0f);
+
+	SetActorLocationAndRotation(Location, Rotation, false, nullptr, ETeleportType::TeleportPhysics);
+	CompleteSeatedState();
+
+	Client_InitPCSeated(Location, Rotation);
+	ForceNetUpdate();
+}
+
+void ALobbyCharacter::Client_InitPCSeated_Implementation(FVector Location, FRotator Rotation)
+{
+	SetActorLocationAndRotation(Location, Rotation, false, nullptr, ETeleportType::TeleportPhysics);
+	CompleteSeatedState();
+	OnRep_IsSitting();
+}
+
 void ALobbyCharacter::StartSitTransition(ASeatActor* TargetSeat)
 {
 	CurrentSeat = TargetSeat;
@@ -647,8 +686,11 @@ void ALobbyCharacter::OnSitMontageEnded(UAnimMontage* Montage, bool bInterrupted
 			Client_LockCameraAfterSit(CurrentSeat->SitTarget->GetComponentRotation());
 		}
 
-		// 완벽하게 안착했으므로 무브먼트 컴포넌트를 비활성화
-		GetCharacterMovement()->DisableMovement();
+		// // 완벽하게 안착했으므로 무브먼트 컴포넌트를 비활성화
+		// GetCharacterMovement()->DisableMovement();
+
+		// 즉시 착석과 동일한 이동 차단 및 착석 완료 상태를 적용합니다.
+		CompleteSeatedState();
 
 		// 델리게이트 해제 (메모리 릭 방지)
 		UAnimInstance* MainAnimInstance = GetMesh()->GetAnimInstance();
@@ -656,8 +698,6 @@ void ALobbyCharacter::OnSitMontageEnded(UAnimMontage* Montage, bool bInterrupted
 		{
 			MainAnimInstance->OnMontageEnded.RemoveDynamic(this, &ALobbyCharacter::OnSitMontageEnded);
 		}
-
-		bIsSittingEnded = true; // 앉기 애니메이션이 완전히 끝났음을 표시하는 플래그
 	}
 }
 
@@ -705,7 +745,12 @@ void ALobbyCharacter::OnRep_IsSitting()
 
 	if (IsLocallyControlled())
 	{
-		if (bIsSitting)
+		if (bIsSitting && bIsSittingEnded)
+		{
+			// 즉시 착석은 좌석에 맞춘 몸체 방향을 초기 시선으로 사용합니다.
+			ApplySeatedCamera(GetActorRotation(), GetActorRotation());
+		}
+		else if (bIsSitting)
 		{
 			// 앉는 애니메이션이 재생되는 동안 카메라는 마우스를 무시하고 머리 뼈(head)를 따라가며 돌아앉는 연출을 보여줍니다.
 			CameraComponent->SetRelativeLocationAndRotation(FVector(-2.8f, 8.5, 0.0f), FRotator(0.0f, 90.0f, -90.0f));
@@ -739,23 +784,24 @@ void ALobbyCharacter::OnRep_PlayerState()
 	BindPlayerStateDelegates();
 }
 
-void ALobbyCharacter::Client_LockCameraAfterSit_Implementation(FRotator FinalSitRotation)
+// Client_LockCameraAfterSit_Implementation의 카메라 관련 기능을 함수로 변환
+void ALobbyCharacter::ApplySeatedCamera(const FRotator& InitialViewRotation, const FRotator& FinalSitRotation)
 {
 	if (APlayerController* PC = Cast<APlayerController>(GetController()))
 	{
 		// 애니메이션이 끝난 바로 그 순간의 '실제 카메라가 바라보는 앞방향(Forward Vector)'을 추출하여 회전값으로 변환합니다.
 		// GetComponentRotation()을 그대로 쓰면 카메라에 적용된 상대 회전값(Roll -90, Yaw 90) 때문에 ControlRotation 적용 시 축이 90도 꼬여버립니다.
-		FRotator CurrentCameraRot = CameraComponent->GetForwardVector().Rotation();
+		//FRotator CurrentCameraRot = CameraComponent->GetForwardVector().Rotation();
 
 		// 마우스 컨트롤(ControlRotation)을 현재 카메라가 보고 있는 방향으로 완벽하게 덮어씌웁니다.
 		// 이렇게 하면 애니메이션에서 마우스로 조작 권한이 넘어갈 때 화면이 단 1픽셀도 튀지 않습니다!
-		PC->SetControlRotation(CurrentCameraRot);
+		// CurrentCameraRot에서 초기 시선으로 적용
+		PC->SetControlRotation(InitialViewRotation);
 
 		// 다시 마우스로 카메라를 움직일 수 있도록 활성화
 		CameraComponent->bUsePawnControlRotation = true;
 
 		// 시야각 제한 (최종 안착 방향 기준 좌/우 60도)
-
 		if (APlayerCameraManager* CamManager = PC->PlayerCameraManager)
 		{
 			float CenterYaw = FinalSitRotation.Yaw;
@@ -770,6 +816,14 @@ void ALobbyCharacter::Client_LockCameraAfterSit_Implementation(FRotator FinalSit
 			CamManager->ViewPitchMax = 45.0f;
 		}
 	}
+}
+
+void ALobbyCharacter::Client_LockCameraAfterSit_Implementation(FRotator FinalSitRotation)
+{
+	if (!CameraComponent) return;
+	// 기존 앉기 연출이 끝난 시선을 유지합니다. 상대 회전 대신 전방 벡터를 사용합니다.
+	const FRotator CurrentCameraRotation = CameraComponent->GetForwardVector().Rotation();
+	ApplySeatedCamera(CurrentCameraRotation, FinalSitRotation);
 }
 
 

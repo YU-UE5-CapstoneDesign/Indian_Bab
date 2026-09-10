@@ -1,4 +1,4 @@
-﻿#pragma once
+#pragma once
 
 #include "CoreMinimal.h"
 #include "GameFramework/Character.h"
@@ -21,6 +21,13 @@ class INDIAN_BAB_API ALobbyCharacter : public ACharacter
 {
 	GENERATED_BODY()
 
+private:
+	// 서버와 소유 클라이언트의 착석 완료 상태를 공통으로 적용합니다.
+	void CompleteSeatedState();
+
+	// 초기 시선과 좌석 방향에 맞춰 PC 카메라를 설정합니다.
+	void ApplySeatedCamera(const FRotator& InitialViewRotation, const FRotator& SeatRotation);
+
 public:
 	// Sets default values for this character's properties
 	ALobbyCharacter();
@@ -40,6 +47,14 @@ public:
 
 	// 의자 상호작용 시 호출되어 몽타주 종료를 기다립니다.
 	void StartSitTransition(ASeatActor* TargetSeat);
+
+	void InitPCSeatedAtSeat(ASeatActor* TargetSeat);
+
+	UFUNCTION(Client, Reliable)
+	void Client_InitPCSeated(FVector Location, FRotator Rotation);
+
+	UPROPERTY(EditDefaultsOnly, Category = "PC|Seat")
+	float PCSeatHeightOffset = 0.0f;
 
 	// 서버/클라이언트 모두에서 앉기 상태가 변할 때 시각적, 조작적 처리를 할 함수
 	UFUNCTION()
