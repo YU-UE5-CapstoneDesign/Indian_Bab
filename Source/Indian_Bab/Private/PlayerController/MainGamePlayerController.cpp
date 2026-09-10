@@ -1,4 +1,4 @@
-﻿#include "PlayerController/MainGamePlayerController.h"
+#include "PlayerController/MainGamePlayerController.h"
 #include "EnhancedInputSubsystems.h"
 #include "InputMappingContext.h"
 #include "EnhancedInputComponent.h"
@@ -52,17 +52,24 @@ void AMainGamePlayerController::BeginPlay()
 
     CreateMainGameWidget();
     CreateDeckLeftWidget();
-    EnterCameraMode();
-	ApplyLobbyMappingContext();
+    
+    // 자동 착석이므로 주석 처리
+    // EnterCameraMode();
+	// ApplyLobbyMappingContext();
+
+    // 자동 착석에 맞게 진입
+    EnterUIMode();
+    ApplyMainGameMappingContext();
 
     if (USettingSubsystem* SettingSS = GetGameInstance()->GetSubsystem<USettingSubsystem>())
     {
         LookSensitivity = SettingSS->GetMouseSensitivity();
     }
 
-	FInputModeGameOnly Mode;
-	SetInputMode(Mode);
-	bShowMouseCursor = false;
+    // 자동 착석이므로 주석 처리
+	// FInputModeGameOnly Mode;
+	// SetInputMode(Mode);
+	// bShowMouseCursor = false;
 
     TrySendSteamNickname();
 
@@ -512,11 +519,30 @@ void AMainGamePlayerController::Server_RequestMainRevolverShot_Implementation()
 #endif
 }
 
+// 앉았을 때 대기화면 생성
 void AMainGamePlayerController::ClientOnSeated_Implementation()
 {
-    // 로비 조작(WASD)을 끄고 메인 게임(마우스/UI) 조작으로 스위칭
+    // 로비 조작(WASD)을 끄고 메인 게임(마우스/UI) 조작으로 스위칭(기존)
+    // 현재는 자동 착석시작이라 메인 게임 조작으로 시작
     ApplyMainGameMappingContext();
-    EnterUIMode();
+
+    // 착석 시(게임 시작 시) 메인 게임 위젯 생성
+    if (!MainGameWidgetInstance) CreateMainGameWidget();
+
+    // ReadyButton만 보이게
+    MainGameWidgetInstance->SetVisibility(ESlateVisibility::Visible);
+    MainGameWidgetInstance->SetPCReadyMode(true);
+}
+
+// 접속 인원 모두 레디를 눌렀을 때
+void AMainGamePlayerController::Client_FinishPCReady_Implementation()
+{
+    // 메인 게임 위젯 보이게
+    if (MainGameWidgetInstance)
+    {
+        MainGameWidgetInstance->SetPCReadyMode(false);
+        MainGameWidgetInstance->SetVisibility(ESlateVisibility::Visible);
+    }
 }
 
 void AMainGamePlayerController::Server_RequestReady_Implementation()

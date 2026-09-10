@@ -1,4 +1,4 @@
-﻿#pragma once
+#pragma once
 
 #include "CoreMinimal.h"
 #include "GameFramework/PlayerController.h"
@@ -48,6 +48,9 @@ public:
 
     UFUNCTION(Client, Reliable)
     void ClientOnSeated();
+
+    UFUNCTION(Client, Reliable)
+    void Client_FinishPCReady();
 
     UFUNCTION(Server, Reliable)
     void Server_RequestReady();
@@ -121,6 +124,8 @@ private:
 
     // 감도
     float LookSensitivity = 1.0f;
+
+
 
     // 카메라 모드/UI 모드 관리
     bool bRMBHeld = false;

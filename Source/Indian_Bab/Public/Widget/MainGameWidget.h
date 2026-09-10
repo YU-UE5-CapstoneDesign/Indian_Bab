@@ -22,6 +22,15 @@ protected:
 	virtual void NativeDestruct() override;
 
 private:
+    UPROPERTY(meta = (BindWidgetOptional))
+    TObjectPtr<UButton> Button_Ready;
+
+    UFUNCTION()
+    void OnReadyClicked();
+
+    bool bPCReadyMode = false;
+    bool bPCReadySubmitted = false;
+
 
 	UPROPERTY(meta = (BindWidget))
 	TObjectPtr<UTextBlock> Txt_BetLog;
@@ -87,6 +96,7 @@ private:
 public:
 	// 플레이어 컨트롤러 및 플레이어 스테이트 등록
 	void InitWidget();
+	void SetPCReadyMode(bool bWaitingForReady);
 
 	int32 GetBetNum() const;
 

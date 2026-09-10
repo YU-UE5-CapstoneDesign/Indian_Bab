@@ -68,9 +68,4 @@ void UReadyWidget::ConfirmReady()
 	{
 		VRCharacter->HideReadyWidget();
 	}
-	else
-	{
-		UE_LOG(LogTemp, Warning, TEXT("[ReadyWidget] PC Pawn is not ALobbyVRCharacter"));
-		SetVisibility(ESlateVisibility::Collapsed);
-	}
 }

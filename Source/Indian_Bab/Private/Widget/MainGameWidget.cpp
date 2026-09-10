@@ -55,6 +55,7 @@ void UMainGameWidget::NativeDestruct()
     if (Button_Raise)     Button_Raise->OnClicked.RemoveAll(this);
     if (Button_CheckCall) Button_CheckCall->OnClicked.RemoveAll(this);
     if (Button_Fold)      Button_Fold->OnClicked.RemoveAll(this);
+    if (Button_Ready)     Button_Ready->OnClicked.RemoveAll(this);
 
     // 외부 객체 구독 해제
     if (MainPS)
@@ -78,9 +79,54 @@ void UMainGameWidget::OperateTimer() {
 	Time->SetText(FText::AsNumber(GS->GetRemainingTimeCeil()));
 }
 
+// PC 모드에서의 Ready 상태
+void UMainGameWidget::SetPCReadyMode(bool bWaitingForReady)
+{
+    if (bWaitingForReady && !bPCReadyMode) bPCReadySubmitted = false;
+    bPCReadyMode = bWaitingForReady;
+    if (Button_Ready)
+    {
+        Button_Ready->SetVisibility(bPCReadyMode && !bPCReadySubmitted ? ESlateVisibility::Visible : ESlateVisibility::Collapsed);
+        Button_Ready->SetIsEnabled(bPCReadyMode && !bPCReadySubmitted);
+    }
+    else if (bPCReadyMode)
+    {
+        UE_LOG(LogTemp, Error, TEXT("WBP_MainGame needs a Button named Button_Ready."));
+    }
+    // PC 컨트롤러에서만 호출, VR은 기존 게임 UI 처리를 유지
+    if (Button_Raise) Button_Raise->SetIsEnabled(!bPCReadyMode);
+    if (Button_CheckCall) Button_CheckCall->SetIsEnabled(!bPCReadyMode);
+    if (Button_Fold) Button_Fold->SetIsEnabled(!bPCReadyMode);
+    if (Plus_Button) Plus_Button->SetIsEnabled(!bPCReadyMode);
+    if (Minus_Button) Minus_Button->SetIsEnabled(!bPCReadyMode);
+}
+
+// Ready 버튼 눌렀을 때
+void UMainGameWidget::OnReadyClicked()
+{
+    if (!bPCReadyMode || bPCReadySubmitted) return;
+    AMainGamePlayerController* PC = Cast<AMainGamePlayerController>(GetOwningPlayer());
+    if (!PC || !PC->IsLocalController()) return;
+    bPCReadySubmitted = true;
+    if (Button_Ready)
+    {
+        Button_Ready->SetIsEnabled(false);
+        Button_Ready->SetVisibility(ESlateVisibility::Collapsed);
+    }
+    PC->Server_RequestReady();
+}
+
 void UMainGameWidget::NativeConstruct() 
 {
 	Super::NativeConstruct();
+    if (Button_Ready)
+    {
+        Button_Ready->OnClicked.RemoveAll(this);
+        Button_Ready->OnClicked.AddDynamic(this, &UMainGameWidget::OnReadyClicked);
+        Button_Ready->SetVisibility(bPCReadyMode && !bPCReadySubmitted ? ESlateVisibility::Visible : ESlateVisibility::Collapsed);
+        Button_Ready->SetIsEnabled(bPCReadyMode && !bPCReadySubmitted);
+    }
+
 
 	if (Minus_Button) 
 	{
