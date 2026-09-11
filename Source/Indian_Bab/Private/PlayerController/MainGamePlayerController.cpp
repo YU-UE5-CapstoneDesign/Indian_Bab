@@ -149,9 +149,16 @@ void AMainGamePlayerController::HandleConnectivityRestored()
 }
 
 
+// 게임 입력을 연결하고 PC 좌클릭 격발 입력을 등록합니다.
 void AMainGamePlayerController::SetupInputComponent()
 {
     Super::SetupInputComponent();
+
+    // PC 좌클릭은 VR 입력 에셋과 독립적으로 연결합니다. 실행 시 Pawn 종류를 검사합니다.
+    if (IsLocalPlayerController() && InputComponent)
+    {
+        InputComponent->BindKey(EKeys::LeftMouseButton, IE_Pressed, this, &AMainGamePlayerController::OnPCMainShotPressed);
+    }
 
 	if (!IsLocalPlayerController()) 
         return;
@@ -572,9 +579,28 @@ void AMainGamePlayerController::OnMainGameTabPressed(const FInputActionValue& Va
     }
 }
 
+// PC 격발 모드를 전환하고 메인 게임 위젯의 표시 여부를 설정합니다.
+void AMainGamePlayerController::Client_SetPCMainShotMode_Implementation(bool bEnabled)
+{
+    bPCMainShotMode = bEnabled;
+    if (MainGameWidgetInstance)
+    {
+        MainGameWidgetInstance->SetVisibility(bEnabled ? ESlateVisibility::Hidden : ESlateVisibility::Visible);
+    }
+}
+
+// PC 격발 모드에서 좌클릭하면 서버에 격발을 요청합니다.
+void AMainGamePlayerController::OnPCMainShotPressed()
+{
+    if (!bPCMainShotMode || !Cast<ALobbyCharacter>(GetPawn()) || Cast<ALobbyVRCharacter>(GetPawn())) return;
+    Server_RequestMainRevolverShot();
+}
+
+// VR 캐릭터의 발사 입력을 서버 격발 요청으로 전달합니다.
 void AMainGamePlayerController::OnFire(const FInputActionValue& Value)
 {
-	Server_RequestMainRevolverShot();
+    // PC는 좌클릭 경로만 사용하여 같은 입력에서 두 번 격발하는 것을 막습니다.
+    if (Cast<ALobbyVRCharacter>(GetPawn())) Server_RequestMainRevolverShot();
 }
 
 void AMainGamePlayerController::OnRightTriggerClickStarted(const FInputActionValue& Value)

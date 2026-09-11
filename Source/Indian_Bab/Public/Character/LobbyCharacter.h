@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 
 #include "CoreMinimal.h"
 #include "GameFramework/Character.h"
@@ -22,6 +22,12 @@ class INDIAN_BAB_API ALobbyCharacter : public ACharacter
 	GENERATED_BODY()
 
 private:
+	// 폴드와 PC 승리 시 기존 총 잡기 몽타주 처리를 공유합니다.
+	void PlayGrabGunMontage(EGunHoldReason Reason);
+
+	// 총 반환과 PC 격발 종료에서 손의 총 메시 정리를 공유합니다.
+	void ClearHeldRevolverMeshes();
+
 	// 서버와 소유 클라이언트의 착석 완료 상태를 공통으로 적용합니다.
 	void CompleteSeatedState();
 
@@ -219,6 +225,16 @@ public:
 
 	void SetActiveRevolver(ARevolver* NewRevolver);
 
+	// PC는 기존 몽타주로 잡고, 서버 완료 시 모든 화면의 총 부착을 확정합니다.
+	UFUNCTION(NetMulticast, Reliable)
+	void Multicast_BeginPCMainRevolver(ARevolver* Revolver);
+
+	UFUNCTION(NetMulticast, Reliable)
+	void Multicast_CompletePCMainRevolverGrab();
+
+	UFUNCTION(NetMulticast, Reliable)
+	void Multicast_ClearPCMainRevolver();
+
 	void BeginManualMainRevolverPhase();
 	void ReturnMainRevolverToTableImmediately();
 	void MarkMainRevolverGrabbed();
@@ -234,6 +250,10 @@ public:
 	// 조준선 거리
 	UPROPERTY(EditDefaultsOnly, Category = "Main Revolver")
 	float MainShotAimLineDistance = 5000.0f;
+
+	// PC 화면 중앙에 표시할 디버그 점의 크기입니다.
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Main Revolver", meta = (ClampMin = "1.0"))
+	float PCMainShotDotSize = 6.0f;
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Card")
 	TObjectPtr<UStaticMeshComponent> CardDisplayMesh;

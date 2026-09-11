@@ -18,6 +18,8 @@ class INDIAN_BAB_API AMainGamePlayerController : public APlayerController
 public:
 	AMainGamePlayerController();
 
+
+
     virtual void BeginPlay() override;
     virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
 
@@ -51,6 +53,9 @@ public:
 
     UFUNCTION(Client, Reliable)
     void Client_FinishPCReady();
+
+    UFUNCTION(Client, Reliable)
+    void Client_SetPCMainShotMode(bool bEnabled);
 
     UFUNCTION(Server, Reliable)
     void Server_RequestReady();
@@ -102,6 +107,9 @@ private:
     void OnMainGameTabPressed(const FInputActionValue& Value);
 
     void OnFire(const FInputActionValue& Value);
+    void OnPCMainShotPressed();
+    bool bPCMainShotMode = false;
+
 
     void OnRightTriggerClickStarted(const FInputActionValue& Value);
 

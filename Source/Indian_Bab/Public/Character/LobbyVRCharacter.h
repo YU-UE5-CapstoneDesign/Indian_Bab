@@ -156,11 +156,18 @@ public:
 	UPROPERTY(ReplicatedUsing=OnRep_ArmTransforms, BlueprintReadOnly, Category = "MotionController")
 	FTransform RightArm;
 
+	// 서버 피격 판정에 사용할 오른손 파란선의 월드 좌표입니다.
+	FTransform RightAimTransform = FTransform::Identity;
+	bool bHasRightAimTransform = false;
+
 	UFUNCTION(Server, Unreliable)
-	void Server_UpdateArm(const FTransform& NewLeftArm, const FTransform& NewRightArm);
+	void Server_UpdateArm(const FTransform& NewLeftArm, const FTransform& NewRightArm, const FTransform& NewRightAim);
 
 	UFUNCTION()
 	void OnRep_ArmTransforms();
+
+	// 로컬 컨트롤러 또는 서버에 전달된 오른손 좌표로 조준 방향을 구합니다.
+	bool GetRightHandShotTrace(FVector& OutStart, FVector& OutEnd) const;
 
 	void GrabGun();
 

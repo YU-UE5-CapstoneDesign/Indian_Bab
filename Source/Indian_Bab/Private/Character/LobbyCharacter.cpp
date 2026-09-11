@@ -1,4 +1,5 @@
-#include "Character/LobbyCharacter.h"
+﻿#include "Character/LobbyCharacter.h"
+#include "Character/LobbyVRCharacter.h"
 #include "EnhancedInputComponent.h"
 #include "PlayerController/MainGamePlayerController.h"
 #include "InputActionValue.h"
@@ -457,7 +458,14 @@ void ALobbyCharacter::MulticastPlaySitAnimation_Implementation()
 	}
 }
 
+// 모든 클라이언트에서 공통 총 잡기 몽타주 처리를 실행합니다.
 void ALobbyCharacter::Multicast_PlayGrabGunMontage_Implementation(EGunHoldReason Reason)
+{
+	PlayGrabGunMontage(Reason);
+}
+
+// 총을 잡는 이유에 맞는 몽타주를 재생하고 종료 처리를 연결합니다.
+void ALobbyCharacter::PlayGrabGunMontage(EGunHoldReason Reason)
 {
 	GunHoldReason = Reason;
 
@@ -481,9 +489,8 @@ void ALobbyCharacter::Multicast_PlayGrabGunMontage_Implementation(EGunHoldReason
 		MontageToPlay = WinAimMontage;
 	}
 
-	if (MontageToPlay)
+	if (MontageToPlay && AnimInstance->Montage_Play(MontageToPlay, 1.0f) > 0.0f)
 	{
-		AnimInstance->Montage_Play(MontageToPlay, 1.0f);
 		FOnMontageEnded EndDelegate;
 		EndDelegate.BindUObject(this, &ALobbyCharacter::OnGrabGunMontageEnded);
 		AnimInstance->Montage_SetEndDelegate(EndDelegate, MontageToPlay);
@@ -595,10 +602,9 @@ void ALobbyCharacter::AttachRevolverToSocket()
 	
 }
 
-void ALobbyCharacter::ReturnRevolverToDesk()
+// 1인칭과 3인칭 손의 총 메시를 숨기고 비웁니다.
+void ALobbyCharacter::ClearHeldRevolverMeshes()
 {
-	ARevolver* RevolverToReturn = ActiveRevolver ? ActiveRevolver.Get() : DeskRevolver.Get();
-
 	if (FP_RevolverMesh)
 	{
 		FP_RevolverMesh->SetVisibility(false);
@@ -610,6 +616,14 @@ void ALobbyCharacter::ReturnRevolverToDesk()
 		TP_RevolverMesh->SetVisibility(false);
 		TP_RevolverMesh->SetSkeletalMeshAsset(nullptr);
 	}
+}
+
+// 손의 총 메시를 정리하고 책상 총을 다시 표시합니다.
+void ALobbyCharacter::ReturnRevolverToDesk()
+{
+	ARevolver* RevolverToReturn = ActiveRevolver ? ActiveRevolver.Get() : DeskRevolver.Get();
+
+	ClearHeldRevolverMeshes();
 
 	if (!RevolverToReturn) return;
 	RevolverToReturn->SetActorHiddenInGame(false);
@@ -849,6 +863,43 @@ void ALobbyCharacter::SetActiveRevolver(ARevolver* NewRevolver)
 	ForceNetUpdate();
 }
 
+// PC 메인 총 참조와 잡기 상태를 설정하고 승리 몽타주를 재생합니다.
+void ALobbyCharacter::Multicast_BeginPCMainRevolver_Implementation(ARevolver* Revolver)
+{
+	if (IsA<ALobbyVRCharacter>() || !Revolver) return;
+
+	// RPC에 총 참조를 함께 보내 속성 복제보다 몽타주가 먼저 시작되는 경우를 처리합니다.
+	ActiveRevolver = Revolver;
+	bMainRevolverGrabbed = false;
+	bIsPuttingBackGun = false;
+	// 이미 멀티캐스트로 도착했으므로 추가 RPC 없이 공통 재생 처리만 실행합니다.
+	PlayGrabGunMontage(EGunHoldReason::Win);
+}
+
+// PC 총을 손 소켓에 붙이고 잡기 완료 상태와 조준선을 켭니다.
+void ALobbyCharacter::Multicast_CompletePCMainRevolverGrab_Implementation()
+{
+	if (IsA<ALobbyVRCharacter>() || GunHoldReason != EGunHoldReason::Win || !ActiveRevolver) return;
+	AttachRevolverToSocket();
+	bMainRevolverGrabbed = true;
+	bShowMainShotAimLine = true;
+}
+
+// PC 잡기 몽타주를 중지하고 총 메시와 조준 상태를 정리합니다.
+void ALobbyCharacter::Multicast_ClearPCMainRevolver_Implementation()
+{
+	if (IsA<ALobbyVRCharacter>()) return;
+	// 제한시간 만료 시에도 남은 잡기 애니메이션과 원격 화면의 총을 정리합니다.
+	if (UAnimInstance* AnimInstance = GetMesh()->GetAnimInstance())
+	{
+		if (WinAimMontage) AnimInstance->Montage_Stop(0.0f, WinAimMontage);
+	}
+	ClearHeldRevolverMeshes();
+	bMainRevolverGrabbed = false;
+	bShowMainShotAimLine = false;
+	GunHoldReason = EGunHoldReason::None;
+}
+
 void ALobbyCharacter::BeginManualMainRevolverPhase()
 {
 	if (!HasAuthority()) return;
@@ -870,19 +921,15 @@ void ALobbyCharacter::BeginManualMainRevolverPhase()
 	ForceNetUpdate();
 }
 
+// 메인 총의 사용 상태를 정리하고 원래 책상 위치로 돌려놓습니다.
 void ALobbyCharacter::ReturnMainRevolverToTableImmediately()
 {
-	if (FP_RevolverMesh)
+	if (HasAuthority() && !IsA<ALobbyVRCharacter>())
 	{
-		FP_RevolverMesh->SetVisibility(false);
-		FP_RevolverMesh->SetSkeletalMeshAsset(nullptr);
+		Multicast_ClearPCMainRevolver();
 	}
 
-	if (TP_RevolverMesh)
-	{
-		TP_RevolverMesh->SetVisibility(false);
-		TP_RevolverMesh->SetSkeletalMeshAsset(nullptr);
-	}
+	ClearHeldRevolverMeshes();
 
 	bShowMainShotAimLine = false;
 	bMainRevolverGrabbed = false;
@@ -916,27 +963,20 @@ void ALobbyCharacter::SetMainShotAimLineVisible(bool bVisible)
 	bShowMainShotAimLine = bVisible;
 }
 
+// PC 본인 화면의 정중앙에 빨간 디버그 점을 표시합니다.
 void ALobbyCharacter::DrawMainShotAimLine()
 {
-	// 자기 화면에서만 보이게
-	if (!IsLocallyControlled()) return;
-
-	// 메인 리볼버 조준 중일 때만
-	if (!bShowMainShotAimLine) return;
-	if (GunHoldReason != EGunHoldReason::Win) return;
-
-	const FVector Forward = FP_RevolverMesh->GetForwardVector();
-	const FVector Start = FP_RevolverMesh->GetComponentLocation();
-	const FVector End = Start + Forward * 2500.0f;
-
-	DrawDebugLine(
-		GetWorld(),
-		Start,
-		End,
-		FColor::Red,
-		false,
-		0.0f,
-		0,
-		2.0f 
-	);
+ // VR은 기존 파란선, PC는 카메라 정면의 디버그 점을 사용합니다.
+ if (IsA<ALobbyVRCharacter>() || !IsLocallyControlled() || !GetWorld()) return;
+ if (!bShowMainShotAimLine || GunHoldReason != EGunHoldReason::Win
+     || !bMainRevolverGrabbed || !ActiveRevolver) return;
+ APlayerController* PC = Cast<APlayerController>(GetController());
+ if (!PC) return;
+ FVector ViewLocation;
+ FRotator ViewRotation;
+ PC->GetPlayerViewPoint(ViewLocation, ViewRotation);
+ // 카메라 앞에 배치하고 전경으로 그려 주변 물체에 점이 가려지지 않게 합니다.
+ const FVector DotLocation = ViewLocation + ViewRotation.Vector() * 100.0f;
+ DrawDebugPoint(GetWorld(), DotLocation, FMath::Max(1.0f, PCMainShotDotSize),
+     FColor::Red, false, 0.0f, SDPG_Foreground);
 }

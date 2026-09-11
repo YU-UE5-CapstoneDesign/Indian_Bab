@@ -1,6 +1,7 @@
 #include "Game/MainGameMode.h"
 #include "Game/MainGameState.h"
 #include "Character/LobbyCharacter.h"
+#include "Character/LobbyVRCharacter.h"
 #include "PlayerController/MainGamePlayerController.h"
 #include "PlayerState/MainPlayerState.h"
 #include "Actor/Revolver.h"
@@ -37,6 +38,9 @@ void AMainGameMode::HandleBetAction(AMainGamePlayerController* RequestPC, EBetAc
     }
 
 	GS->bTurnActionInProgress = true;
+	GetWorldTimerManager().ClearTimer(TimerHandle);
+	GS->ClearTimerInfo();
+
 	UE_LOG(LogTemp, Warning, TEXT("[GM] Player %d Action: %s"), PlayerId, *UEnum::GetValueAsString(Action));
 
 	if(Action == EBetAction::Fold)
@@ -143,6 +147,8 @@ void AMainGameMode::OnMainShotTimerExpired()
 	if (!WinnerCharacter || !WinnerCharacter->IsMainRevolverGrabbed())
 	{
 		UE_LOG(LogTemp, Warning, TEXT("[GM] Main shot timer expired but MainRevolver is not grabbed. Auto fire skipped."));
+		// PC와 VR 모두 기존 시간 초과 정리 경로로 격발 단계를 종료합니다.
+		OnMainRevolverGrabTimerExpired();
 		return;
 	}
 
@@ -180,6 +186,11 @@ void AMainGameMode::OnMainRevolverGrabTimerExpired()
 	{
 		WinnerCharacter->ReturnMainRevolverToTableImmediately();
 	}
+	else if (ARevolver* Revolver = GetMainRevolver())
+	{
+		// 승자가 퇴장해 캐릭터가 없어도 공용 총을 책상으로 반환합니다.
+		Revolver->ReturnToInitialTableTransform();
+	}
 
 	FinishMainShotPhase();
 }
@@ -206,6 +217,7 @@ void AMainGameMode::HandleMainRevolverGrabbed(ALobbyCharacter* Character)
 }
 
 // 메인 리볼버 격발 액션
+// 승자의 잡기 완료 상태와 격발 조건을 서버에서 확인하고 발사합니다.
 void AMainGameMode::HandleMainRevolverShotAction(AMainGamePlayerController* RequestPC)
 {
 	if (!HasAuthority()) return;
@@ -222,6 +234,12 @@ void AMainGameMode::HandleMainRevolverShotAction(AMainGamePlayerController* Requ
 
 	// 승리 플레이어나 요청한 플레이어가 승리 플레이어와 동일하지 않으면 리턴
 	if (!CurrentWinnerPS || RequestPS != CurrentWinnerPS) return;
+
+	// PC와 VR 모두 실제 잡기 완료 이후에만 서버에서 격발을 허용합니다.
+	const ALobbyCharacter* Shooter = Cast<ALobbyCharacter>(RequestPC->GetPawn());
+	if (!RequestPS->isAlive || !Shooter || !Shooter->IsMainRevolverGrabbed()
+		|| Shooter->GunHoldReason != EGunHoldReason::Win || !Shooter->ActiveRevolver
+		|| bMainRevolverPutBackInProgress) return;
 
 	if (GS -> CurrentBulletCount <= 0)
 	{
@@ -279,14 +297,26 @@ void AMainGameMode::HandleFoldMontageFinished(ALobbyCharacter* Character)
 }
 
 // 메인 리볼버 줍는 애니메이션 끝났을 때 호출
+// 메인 총 잡기 몽타주 종료 후 PC 잡기를 완료하거나 VR 격발 단계를 진행합니다.
 void AMainGameMode::HandleMainMontageFinished(ALobbyCharacter* Character)
 {
 	if (!HasAuthority()) return;
 	if (!Character) return;
 
 	AMainGameState* GS = GetGameState<AMainGameState>();
-	if(!GS) return;
+	if (!GS || GS->CurrentGamePhase != EGamePhase::Result || !CurrentWinnerPS) return;
+	AMainGamePlayerController* WinnerPC = Cast<AMainGamePlayerController>(CurrentWinnerPS->GetOwner());
+	if (!WinnerPC || WinnerPC->GetPawn() != Character || bMainRevolverPutBackInProgress) return;
 
+	if (!Cast<ALobbyVRCharacter>(Character))
+	{
+		if (Character->GunHoldReason != EGunHoldReason::Win || !Character->ActiveRevolver
+			|| Character->IsMainRevolverGrabbed()) return;
+		Character->Multicast_CompletePCMainRevolverGrab();
+		Character->MarkMainRevolverGrabbed();
+		HandleMainRevolverGrabbed(Character);
+		return;
+	}
 	ManageShotPhase();
 }
 
@@ -523,6 +553,12 @@ bool AMainGameMode::GetMainShotTraceStartEnd(AMainGamePlayerController* ShooterP
 	if (!ShooterPC)
 	{
 		return false;
+	}
+
+	// VR은 파란선의 오른손 Aim, PC는 화면 중앙 시점을 기준으로 판정합니다.
+	if (const ALobbyVRCharacter* VRCharacter = Cast<ALobbyVRCharacter>(ShooterPC->GetPawn()))
+	{
+		return VRCharacter->GetRightHandShotTrace(OutStart, OutEnd);
 	}
 
 	FVector ViewLocation;

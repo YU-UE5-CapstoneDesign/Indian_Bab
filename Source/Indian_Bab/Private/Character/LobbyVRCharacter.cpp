@@ -343,10 +343,12 @@ void ALobbyVRCharacter::OnRep_IsSitting()
 	ConfigureWidgetInteraction();
 }
 
-void ALobbyVRCharacter::Server_UpdateArm_Implementation(const FTransform& NewLeftArm, const FTransform& NewRightArm)
+void ALobbyVRCharacter::Server_UpdateArm_Implementation(const FTransform& NewLeftArm, const FTransform& NewRightArm, const FTransform& NewRightAim)
 {
 	LeftArm = NewLeftArm;
 	RightArm = NewRightArm;
+	RightAimTransform = NewRightAim;
+	bHasRightAimTransform = !NewRightAim.ContainsNaN();
 	ApplyReplicatedArmTransforms();
 }
 
@@ -391,6 +393,19 @@ void ALobbyVRCharacter::UpdateAimFromView()
 	}
 }
 
+// 기존 파란선과 동일한 오른손 Aim 방향으로 서버 피격 판정을 계산합니다.
+bool ALobbyVRCharacter::GetRightHandShotTrace(FVector& OutStart, FVector& OutEnd) const
+{
+	if (!MotionControllerRightAim || (!IsLocallyControlled() && !bHasRightAimTransform)) return false;
+	const FTransform HandTransform = IsLocallyControlled()
+		? MotionControllerRightAim->GetComponentTransform() : RightAimTransform;
+	if (HandTransform.ContainsNaN()) return false;
+	OutStart = HandTransform.GetLocation();
+	const FVector Direction = HandTransform.GetUnitAxis(EAxis::X);
+	OutEnd = OutStart + Direction * VRPointerMaxDistance;
+	return !Direction.IsNearlyZero();
+}
+
 void ALobbyVRCharacter::UpdateArmPosition() {
 	if (!IsLocallyControlled() || !MotionControllerLeftGrip || !MotionControllerRightGrip)
 	{
@@ -398,7 +413,10 @@ void ALobbyVRCharacter::UpdateArmPosition() {
 	}
 	LeftArm = MotionControllerLeftGrip->GetComponentTransform();
 	RightArm = MotionControllerRightGrip->GetComponentTransform();
-	Server_UpdateArm(LeftArm, RightArm);
+	if (MotionControllerRightAim)
+	{
+		Server_UpdateArm(LeftArm, RightArm, MotionControllerRightAim->GetComponentTransform());
+	}
 }
 
 void ALobbyVRCharacter::ConfigureLocalVRTracking()
@@ -728,8 +746,17 @@ void ALobbyVRCharacter::UpdateLaserPointer(const UMotionControllerComponent* Aim
 		return;
 	}
 
-	const FVector Start = AimController->GetComponentLocation();
-	const FVector TraceEnd = Start + AimController->GetForwardVector() * VRPointerMaxDistance;
+	FVector Start;
+	FVector TraceEnd;
+	if (AimController == MotionControllerRightAim.Get())
+	{
+		if (!GetRightHandShotTrace(Start, TraceEnd)) return;
+	}
+	else
+	{
+		Start = AimController->GetComponentLocation();
+		TraceEnd = Start + AimController->GetForwardVector() * VRPointerMaxDistance;
+	}
 
 	FHitResult HitResult;
 	FCollisionQueryParams QueryParams(SCENE_QUERY_STAT(VRPointerTrace), false, this);
