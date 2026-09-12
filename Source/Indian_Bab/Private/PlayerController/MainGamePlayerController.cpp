@@ -23,6 +23,7 @@
 #include "Blueprint/UserWidget.h"
 #include "Components/WidgetComponent.h"
 #include "Components/WidgetSwitcher.h"
+#include "Widget/GameResultWidget.h"
 
 
 AMainGamePlayerController::AMainGamePlayerController()
@@ -759,6 +760,53 @@ bool AMainGamePlayerController::CloseVRMenu()
 	}
 
 	return false;
+}
+
+// 기존 결과 위젯을 PC 화면에 표시하고 마우스로 조작하게 합니다.
+void AMainGamePlayerController::Client_ShowPCResultWidget_Implementation(const FString& WinnerName, int32 WinnerPlayerId)
+{
+    if (!IsLocalController() || Cast<ALobbyVRCharacter>(GetPawn())) return;
+
+    if (!PCResultWidgetClass)
+    {
+        UE_LOG(LogTemp, Error, TEXT("PCResultWidgetClass is not assigned."));
+        return;
+    }
+
+    if (!PCResultWidgetInstance)
+    {
+        PCResultWidgetInstance = CreateWidget<UGameResultWidget>(this, PCResultWidgetClass);
+    }
+
+    if (!PCResultWidgetInstance) return;
+
+    // 격발 입력과 기존 게임 화면을 정리합니다.
+    bPCMainShotMode = false;
+
+    if (MainGameWidgetInstance)
+    {
+        MainGameWidgetInstance->SetVisibility(ESlateVisibility::Collapsed);
+    }
+
+    if (!PCResultWidgetInstance->IsInViewport())
+    {
+        PCResultWidgetInstance->AddToPlayerScreen(100);
+    }
+
+    // PC 결과창 크기와 화면 중앙 배치
+    PCResultWidgetInstance->SetResult(WinnerName, GetPlayerIdSafe() == WinnerPlayerId);
+    PCResultWidgetInstance->SetVisibility(ESlateVisibility::Visible);
+    // PC 인스턴스의 글자와 버튼을 중앙 기준으로 함께 축소합니다.
+    PCResultWidgetInstance->SetRenderTransformPivot(FVector2D(0.5f, 0.5f));
+    PCResultWidgetInstance->SetRenderScale(FVector2D(0.5f, 0.5f));
+    PCResultWidgetInstance->SetPositionInViewport(FVector2D::ZeroVector, false);
+    PCResultWidgetInstance->SetAnchorsInViewport(FAnchors(0.5f, 0.5f));
+    PCResultWidgetInstance->SetAlignmentInViewport(FVector2D(0.5f, 0.5f));
+
+    FInputModeUIOnly Mode;
+    Mode.SetWidgetToFocus(PCResultWidgetInstance->TakeWidget());
+    SetInputMode(Mode);
+    bShowMouseCursor = true;
 }
 
 void AMainGamePlayerController::OnDebugRightTriggerPressed()

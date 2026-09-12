@@ -9,6 +9,7 @@ class UMainGameWidget;
 class UDeckLeftWidget;
 class UInputMappingContext;
 class UInputAction;
+class UGameResultWidget;
 
 UCLASS()
 class INDIAN_BAB_API AMainGamePlayerController : public APlayerController
@@ -61,6 +62,18 @@ public:
     void Server_RequestReady();
 
     int GetPlayerIdSafe();
+
+    // PC 화면에 표시할 기존 결과 위젯 클래스
+    UPROPERTY(EditDefaultsOnly, Category = "UI|Result")
+    TSubclassOf<UGameResultWidget> PCResultWidgetClass;
+
+    // 생성한 PC 결과 위젯
+    UPROPERTY(Transient)
+    TObjectPtr<UGameResultWidget> PCResultWidgetInstance;
+
+    // 서버가 해당 PC 플레이어에게 결과 화면 표시를 요청합니다.
+    UFUNCTION(Client, Reliable)
+    void Client_ShowPCResultWidget(const FString& WinnerName, int32 WinnerPlayerId);
 
 private:
     // 서버로 보내는 RPC

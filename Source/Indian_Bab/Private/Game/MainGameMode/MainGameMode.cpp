@@ -867,11 +867,16 @@ void AMainGameMode::ShowResultWidgets(FString WinnerName, int32 WinnerPlayerId)
 		APlayerController* PC = It->Get();
 		if (!PC) continue;
 
-		ALobbyVRCharacter* VRCharacter = Cast<ALobbyVRCharacter>(PC->GetPawn());
-		if (VRCharacter)
+		if (ALobbyVRCharacter* VRCharacter = Cast<ALobbyVRCharacter>(PC->GetPawn()))
 		{
+			 // VR 캐릭터는 기존 공간 결과 위젯 표시
 			VRCharacter->Client_ShowResultWidget(WinnerName, WinnerPlayerId);
 		}
+		else if (AMainGamePlayerController* MainPC = Cast<AMainGamePlayerController>(PC))
+        {
+			// VR이 아닌 LobbyCharacter는 PC 화면에 결과 위젯 표시
+            MainPC->Client_ShowPCResultWidget(WinnerName, WinnerPlayerId);
+        }
 	}
 }
 #else // WITH_SERVER_CODE
