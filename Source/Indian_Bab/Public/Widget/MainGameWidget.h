@@ -19,14 +19,24 @@ class INDIAN_BAB_API UMainGameWidget : public UUserWidget
 	GENERATED_BODY()
 protected:
 	virtual void NativeConstruct() override;
+	virtual void NativeTick(const FGeometry& MyGeometry, float InDeltaTime) override;
 	virtual void NativeDestruct() override;
 
 private:
     UPROPERTY(meta = (BindWidgetOptional))
     TObjectPtr<UButton> Button_Ready;
 
+    // 자기 턴에만 표시하는 기존 WBP 텍스트입니다.
+    UPROPERTY(meta = (BindWidgetOptional))
+    TObjectPtr<UTextBlock> Text_Turn;
+
     UFUNCTION()
     void OnReadyClicked();
+
+    // PC와 VR 모두 같은 턴 조건으로 베팅 버튼을 갱신합니다.
+    bool IsOwningPlayerTurn() const;
+    bool CanUseBettingButtons() const;
+    void RefreshBettingButtons();
 
     bool bPCReadyMode = false;
     bool bPCReadySubmitted = false;
