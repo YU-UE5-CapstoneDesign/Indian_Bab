@@ -195,8 +195,7 @@ void ALobbyVRCharacter::InitSeatedAtSeat(ASeatActor* TargetSeat)
 		*SitLocation.ToString(),
 		*GetActorLocation().ToString());
 
-	bIsSitting = true;
-	bIsSittingEnded = true;
+	CompleteSeatedState();
 	ConfigureVRSeatedState();
 	ConfigureWidgetInteraction();
 	DrawSeatDebugCapsule();
@@ -212,8 +211,7 @@ void ALobbyVRCharacter::Client_InitSeatedAtSeat_Implementation(FVector TargetLoc
 
 	SetActorLocationAndRotation(TargetLocation, TargetRotation, false, nullptr, ETeleportType::TeleportPhysics);
 
-	bIsSitting = true;
-	bIsSittingEnded = true;
+	CompleteSeatedState();
 	ConfigureVRSeatedState();
 	ConfigureWidgetInteraction();
 	DrawSeatDebugCapsule();
@@ -339,6 +337,7 @@ void ALobbyVRCharacter::ReleaseLeftWidgetInteraction()
 
 void ALobbyVRCharacter::OnRep_IsSitting()
 {
+	Super::OnRep_IsSitting();
 	ConfigureVRSeatedState();
 	ConfigureWidgetInteraction();
 }
@@ -1049,4 +1048,10 @@ void ALobbyVRCharacter::AttachMainRevolverToRightGrip()
 		*MotionControllerRightGrip->GetComponentLocation().ToString(),
 		*ActiveRevolver->GetActorLocation().ToString(),
 		HasAuthority() ? TEXT("true") : TEXT("false"));
+}
+
+// VR은 기존 파란선과 같은 RightAim 구간을 사용합니다.
+bool ALobbyVRCharacter::GetMainShotTrace(float TraceDistance, FVector& OutStart, FVector& OutEnd) const
+{
+    return GetRightHandShotTrace(OutStart, OutEnd);
 }

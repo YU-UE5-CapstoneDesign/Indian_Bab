@@ -384,7 +384,7 @@ void AMainGameMode::AssignInitialSeatToPlayer(APlayerController* NewPlayer)
 	}
 	else
 	{
-		Character->InitPCSeatedAtSeat(EmptySeat);
+		Character->InitSeatedAtSeat(EmptySeat);
 		if (AMainGamePlayerController* PC = Cast<AMainGamePlayerController>(NewPlayer))
 		{
 			PC->ClientOnSeated();

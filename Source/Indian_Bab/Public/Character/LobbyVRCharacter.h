@@ -39,7 +39,8 @@ public:
 	virtual void PawnClientRestart() override;
 	virtual void Tick(float DeltaTime) override;
 
-	void InitSeatedAtSeat(ASeatActor* TargetSeat);
+	virtual void InitSeatedAtSeat(ASeatActor* TargetSeat) override;
+	virtual bool GetMainShotTrace(float TraceDistance, FVector& OutStart, FVector& OutEnd) const override;
 
 	UFUNCTION(Client, Reliable)
 	void Client_InitSeatedAtSeat(FVector TargetLocation, FRotator TargetRotation);

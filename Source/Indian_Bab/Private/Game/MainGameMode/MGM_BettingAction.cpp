@@ -1,6 +1,7 @@
 #include "Game/MainGameMode.h"
 #include "Game/MainGameState.h"
 #include "Character/LobbyCharacter.h"
+#include "Character/LobbyPCCharacter.h"
 #include "Character/LobbyVRCharacter.h"
 #include "PlayerController/MainGamePlayerController.h"
 #include "PlayerState/MainPlayerState.h"
@@ -308,11 +309,11 @@ void AMainGameMode::HandleMainMontageFinished(ALobbyCharacter* Character)
 	AMainGamePlayerController* WinnerPC = Cast<AMainGamePlayerController>(CurrentWinnerPS->GetOwner());
 	if (!WinnerPC || WinnerPC->GetPawn() != Character || bMainRevolverPutBackInProgress) return;
 
-	if (!Cast<ALobbyVRCharacter>(Character))
+	if (ALobbyPCCharacter* PCCharacter = Cast<ALobbyPCCharacter>(Character))
 	{
 		if (Character->GunHoldReason != EGunHoldReason::Win || !Character->ActiveRevolver
 			|| Character->IsMainRevolverGrabbed()) return;
-		Character->Multicast_CompletePCMainRevolverGrab();
+		PCCharacter->Multicast_CompletePCMainRevolverGrab();
 		Character->MarkMainRevolverGrabbed();
 		HandleMainRevolverGrabbed(Character);
 		return;
@@ -555,21 +556,9 @@ bool AMainGameMode::GetMainShotTraceStartEnd(AMainGamePlayerController* ShooterP
 		return false;
 	}
 
-	// VR은 파란선의 오른손 Aim, PC는 화면 중앙 시점을 기준으로 판정합니다.
-	if (const ALobbyVRCharacter* VRCharacter = Cast<ALobbyVRCharacter>(ShooterPC->GetPawn()))
-	{
-		return VRCharacter->GetRightHandShotTrace(OutStart, OutEnd);
-	}
-
-	FVector ViewLocation;
-	FRotator ViewRotation;
-
-	ShooterPC->GetPlayerViewPoint(ViewLocation, ViewRotation);
-
-	OutStart = ViewLocation;
-	OutEnd = OutStart + ViewRotation.Vector() * MainShotTraceDistance;
-
-	return true;
+    // 장치별 조준 계산은 캐릭터 자식 클래스에 맡깁니다.
+    const ALobbyCharacter* Character = Cast<ALobbyCharacter>(ShooterPC->GetPawn());
+    return Character && Character->GetMainShotTrace(MainShotTraceDistance, OutStart, OutEnd);
 }
 
 AMainPlayerState* AMainGameMode::GetMainShotTargetByAim(AMainGamePlayerController* ShooterPC, FHitResult& OutHit)

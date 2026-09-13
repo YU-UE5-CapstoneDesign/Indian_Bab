@@ -11,6 +11,7 @@
 #include "GameFramework/PlayerState.h"
 #include "Character/LobbyCameraManager.h"
 #include "Character/LobbyCharacter.h"
+#include "Character/LobbyPCCharacter.h"
 #include "Character/LobbyVRCharacter.h"
 #include "InputCoreTypes.h"
 #include "Interface/InteractableInterface.h"
@@ -428,11 +429,10 @@ void AMainGamePlayerController::TrySendSteamNickname()
 void AMainGamePlayerController::OnMainGameLook(const FInputActionValue& Value)
 {
     if (!bRMBHeld) return;
-
-    const FVector2D LookAxis = Value.Get<FVector2D>();
-
-    AddYawInput(LookAxis.X * LookSensitivity);
-    AddPitchInput(-LookAxis.Y * LookSensitivity);
+    if (ALobbyPCCharacter* PCCharacter = Cast<ALobbyPCCharacter>(GetPawn()))
+    {
+        PCCharacter->Look(Value.Get<FVector2D>(), LookSensitivity);
+    }
 }
 
 
@@ -470,20 +470,19 @@ void AMainGamePlayerController::OnMainGameRaise(const FInputActionValue& Value)
 
 void AMainGamePlayerController::OnLobbyMove(const FInputActionValue& Value)
 {
-    const FVector2D MoveAxis = Value.Get<FVector2D>();
-    if (APawn* MyPawn = GetPawn())
+    if (ALobbyPCCharacter* PCCharacter = Cast<ALobbyPCCharacter>(GetPawn()))
     {
-        MyPawn->AddMovementInput(MyPawn->GetActorForwardVector(), MoveAxis.Y);
-        MyPawn->AddMovementInput(MyPawn->GetActorRightVector(), MoveAxis.X);
+        PCCharacter->Move(Value.Get<FVector2D>());
     }
 }
 
 
 void AMainGamePlayerController::OnLobbyLook(const FInputActionValue& Value)
 {
-    const FVector2D LookAxis = Value.Get<FVector2D>();
-    AddYawInput(LookAxis.X * LookSensitivity);
-    AddPitchInput(-LookAxis.Y * LookSensitivity);
+    if (ALobbyPCCharacter* PCCharacter = Cast<ALobbyPCCharacter>(GetPawn()))
+    {
+        PCCharacter->Look(Value.Get<FVector2D>(), LookSensitivity);
+    }
 }
 
 void AMainGamePlayerController::OnRep_PlayerState()

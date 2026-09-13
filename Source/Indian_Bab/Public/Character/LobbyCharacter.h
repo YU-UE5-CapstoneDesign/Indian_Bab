@@ -5,7 +5,6 @@
 #include "Game/MainGameTypes.h"
 #include "LobbyCharacter.generated.h"
 
-
 class UInputAction;
 class AMainGamePlayerController;
 struct FInputActionValue;
@@ -15,13 +14,12 @@ class ASeatActor;
 class ARevolver;
 class UWidgetComponent;
 
-
 UCLASS()
 class INDIAN_BAB_API ALobbyCharacter : public ACharacter
 {
 	GENERATED_BODY()
 
-private:
+protected:
 	// 폴드와 PC 승리 시 기존 총 잡기 몽타주 처리를 공유합니다.
 	void PlayGrabGunMontage(EGunHoldReason Reason);
 
@@ -31,8 +29,8 @@ private:
 	// 서버와 소유 클라이언트의 착석 완료 상태를 공통으로 적용합니다.
 	void CompleteSeatedState();
 
-	// 초기 시선과 좌석 방향에 맞춰 PC 카메라를 설정합니다.
-	void ApplySeatedCamera(const FRotator& InitialViewRotation, const FRotator& SeatRotation);
+	// 착석 연출 종료 후 장치별 카메라 처리를 실행합니다.
+	virtual void OnSeatedCameraReady(const FRotator& SeatRotation);
 
 public:
 	// Sets default values for this character's properties
@@ -54,13 +52,11 @@ public:
 	// 의자 상호작용 시 호출되어 몽타주 종료를 기다립니다.
 	void StartSitTransition(ASeatActor* TargetSeat);
 
-	void InitPCSeatedAtSeat(ASeatActor* TargetSeat);
+	// 착석 위치와 카메라 적용은 PC/VR 자식이 결정합니다.
+	virtual void InitSeatedAtSeat(ASeatActor* TargetSeat);
 
-	UFUNCTION(Client, Reliable)
-	void Client_InitPCSeated(FVector Location, FRotator Rotation);
-
-	UPROPERTY(EditDefaultsOnly, Category = "PC|Seat")
-	float PCSeatHeightOffset = 0.0f;
+	// 자식이 제공하는 조준 구간을 서버에서 공통으로 사용합니다.
+	virtual bool GetMainShotTrace(float TraceDistance, FVector& OutStart, FVector& OutEnd) const;
 
 	// 서버/클라이언트 모두에서 앉기 상태가 변할 때 시각적, 조작적 처리를 할 함수
 	UFUNCTION()
@@ -194,7 +190,6 @@ public:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Weapon")
 	TObjectPtr<USkeletalMeshComponent> FP_RevolverMesh;
 
-
 	// 3인칭 리볼버 메시 (ThirdPersonMetaHumanBody의 Revolver 소켓에 부착, 타인만 보임)
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Weapon")
 	TObjectPtr<USkeletalMeshComponent> TP_RevolverMesh;
@@ -225,18 +220,8 @@ public:
 
 	void SetActiveRevolver(ARevolver* NewRevolver);
 
-	// PC는 기존 몽타주로 잡고, 서버 완료 시 모든 화면의 총 부착을 확정합니다.
-	UFUNCTION(NetMulticast, Reliable)
-	void Multicast_BeginPCMainRevolver(ARevolver* Revolver);
-
-	UFUNCTION(NetMulticast, Reliable)
-	void Multicast_CompletePCMainRevolverGrab();
-
-	UFUNCTION(NetMulticast, Reliable)
-	void Multicast_ClearPCMainRevolver();
-
 	void BeginManualMainRevolverPhase();
-	void ReturnMainRevolverToTableImmediately();
+	virtual void ReturnMainRevolverToTableImmediately();
 	void MarkMainRevolverGrabbed();
 	bool IsMainRevolverGrabbed() const;
 
@@ -246,14 +231,6 @@ public:
 
 	UPROPERTY(BlueprintReadOnly, Category = "Main Revolver")
 	bool bMainRevolverGrabbed = false;
-
-	// 조준선 거리
-	UPROPERTY(EditDefaultsOnly, Category = "Main Revolver")
-	float MainShotAimLineDistance = 5000.0f;
-
-	// PC 화면 중앙에 표시할 디버그 점의 크기입니다.
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Main Revolver", meta = (ClampMin = "1.0"))
-	float PCMainShotDotSize = 6.0f;
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Card")
 	TObjectPtr<UStaticMeshComponent> CardDisplayMesh;
@@ -265,9 +242,6 @@ protected:
 	virtual void OnRep_PlayerState() override;
 
 	virtual void UpdateAimFromView();
-
-	// 상호작용 입력 처리 함수
-	void OnInteract(const FInputActionValue& Value);
 
 	// 서버에 상호작용을 요청하는 RPC
 	UFUNCTION(Server, Reliable)
@@ -287,12 +261,9 @@ protected:
 	UFUNCTION()
 	void OnPutBackGunMontageEnded(UAnimMontage* Montage, bool bInterrupted);
 
-	void DrawMainShotAimLine();
+	virtual void DrawMainShotAimLine();
 
-private:
-	UPROPERTY(EditDefaultsOnly, Category = "Input")
-	TObjectPtr<UInputAction> IA_Interact;
-
+protected:
 	// 현재 상호작용 중인 의자 캐싱
 	UPROPERTY()
 	TObjectPtr<ASeatActor> CurrentSeat;

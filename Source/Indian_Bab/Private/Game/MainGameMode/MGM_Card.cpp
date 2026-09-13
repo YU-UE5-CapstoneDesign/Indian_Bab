@@ -4,6 +4,7 @@
 #include "Game/MainGameState.h"
 #include "Kismet/GameplayStatics.h"
 #include "Character/LobbyCharacter.h"
+#include "Character/LobbyPCCharacter.h"
 #include "Character/LobbyVRCharacter.h"
 #include "Actor/SeatActor.h"
 #include "CardController/CardManager.h"
@@ -107,10 +108,13 @@ void AMainGameMode::CheckPlayerCard()
 	}
 
 	ManageShotPhase();
-	if (!Cast<ALobbyVRCharacter>(WinnerCharacter) && GS->CurrentBulletCount > 0)
+	if (ALobbyPCCharacter* PCCharacter = Cast<ALobbyPCCharacter>(WinnerCharacter))
 	{
-		PC->Client_SetPCMainShotMode(true);
-		WinnerCharacter->Multicast_BeginPCMainRevolver(Revolver);
+		if (GS->CurrentBulletCount > 0)
+		{
+			PC->Client_SetPCMainShotMode(true);
+			PCCharacter->Multicast_BeginPCMainRevolver(Revolver);
+		}
 	}
 }
 
