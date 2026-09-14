@@ -430,9 +430,15 @@ void AMainGamePlayerController::TrySendSteamNickname()
     bSteamNicknameSent = true;
 }
 
+// 모드 확정/빙의 순서가 달라도 VR 또는 미생성 Pawn에 PC 입력을 적용하지 않습니다.
+bool AMainGamePlayerController::CanProcessPCInput() const
+{
+    return IsLocalController() && !bUseVRPlayMode && Cast<ALobbyPCCharacter>(GetPawn()) != nullptr;
+}
+
 void AMainGamePlayerController::OnMainGameLook(const FInputActionValue& Value)
 {
-    if (!bRMBHeld) return;
+    if (!CanProcessPCInput() || !bRMBHeld) return;
     if (ALobbyPCCharacter* PCCharacter = Cast<ALobbyPCCharacter>(GetPawn()))
     {
         PCCharacter->Look(Value.Get<FVector2D>(), LookSensitivity);
@@ -442,6 +448,7 @@ void AMainGamePlayerController::OnMainGameLook(const FInputActionValue& Value)
 
 void AMainGamePlayerController::OnMainGameRMBPressed(const FInputActionValue& Value)
 {
+    if (!CanProcessPCInput()) return;
     bRMBHeld = true;
     EnterCameraMode();
 }
@@ -449,6 +456,7 @@ void AMainGamePlayerController::OnMainGameRMBPressed(const FInputActionValue& Va
 
 void AMainGamePlayerController::OnMainGameRMBReleased(const FInputActionValue& Value)
 {
+    if (!CanProcessPCInput()) return;
     bRMBHeld = false;
     EnterUIMode();
 }
@@ -456,24 +464,28 @@ void AMainGamePlayerController::OnMainGameRMBReleased(const FInputActionValue& V
 
 void AMainGamePlayerController::OnMainGameCheckCall(const FInputActionValue& Value)
 {
+    if (!CanProcessPCInput()) return;
     RequestCheckCall();
 }
 
 
 void AMainGamePlayerController::OnMainGameFold(const FInputActionValue& Value)
 {
+    if (!CanProcessPCInput()) return;
     RequestFold();
 }
 
 
 void AMainGamePlayerController::OnMainGameRaise(const FInputActionValue& Value)
 {
+    if (!CanProcessPCInput() || !MainGameWidgetInstance) return;
     RequestRaise(MainGameWidgetInstance->GetBetNum());
 }
 
 
 void AMainGamePlayerController::OnLobbyMove(const FInputActionValue& Value)
 {
+    if (!CanProcessPCInput()) return;
     if (ALobbyPCCharacter* PCCharacter = Cast<ALobbyPCCharacter>(GetPawn()))
     {
         PCCharacter->Move(Value.Get<FVector2D>());
@@ -483,6 +495,7 @@ void AMainGamePlayerController::OnLobbyMove(const FInputActionValue& Value)
 
 void AMainGamePlayerController::OnLobbyLook(const FInputActionValue& Value)
 {
+    if (!CanProcessPCInput()) return;
     if (ALobbyPCCharacter* PCCharacter = Cast<ALobbyPCCharacter>(GetPawn()))
     {
         PCCharacter->Look(Value.Get<FVector2D>(), LookSensitivity);
@@ -576,7 +589,7 @@ int AMainGamePlayerController::GetPlayerIdSafe()
 
 void AMainGamePlayerController::OnMainGameTabPressed(const FInputActionValue& Value)
 {
-
+    if (!CanProcessPCInput()) return;
     if (DeckLeftWidgetInstance)
     {
         DeckLeftWidgetInstance->VisibleWidget();
@@ -596,7 +609,7 @@ void AMainGamePlayerController::Client_SetPCMainShotMode_Implementation(bool bEn
 // PC 격발 모드에서 좌클릭하면 서버에 격발을 요청합니다.
 void AMainGamePlayerController::OnPCMainShotPressed()
 {
-    if (!bPCMainShotMode || !Cast<ALobbyCharacter>(GetPawn()) || Cast<ALobbyVRCharacter>(GetPawn())) return;
+    if (!CanProcessPCInput() || !bPCMainShotMode) return;
     Server_RequestMainRevolverShot();
 }
 

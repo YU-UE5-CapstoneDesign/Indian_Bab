@@ -122,6 +122,8 @@ private:
     void CreateDeckLeftWidget();
 
 	// 입력 바인딩 함수
+    bool CanProcessPCInput() const;
+
     void OnMainGameLook(const FInputActionValue& Value);
 
     void OnMainGameRMBPressed(const FInputActionValue& Value);
