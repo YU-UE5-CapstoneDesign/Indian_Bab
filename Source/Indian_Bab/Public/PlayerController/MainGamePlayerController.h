@@ -17,12 +17,26 @@ class INDIAN_BAB_API AMainGamePlayerController : public APlayerController
 	GENERATED_BODY()
 	
 public:
-	AMainGamePlayerController();
+    AMainGamePlayerController();
+
+    // 서버가 접속한 플레이어의 로컬 모드를 요청합니다.
+    UFUNCTION(Client, Reliable)
+    void Client_RequestPlayMode(bool bUseGameModePawn, bool bGameModeUsesVR);
+
+    bool HasReceivedPlayMode() const { return bPlayModeReceived; }
+    bool UsesVRPlayMode() const { return bUseVRPlayMode; }
+
 
 
 
     virtual void BeginPlay() override;
     virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
+
+private:
+    void ResolveLocalPlayMode();
+    bool bLocalPlayModeResolved = false;
+
+public:
 
     // 데디 AGameSession::KickPlayer(reason) → ClientWasKicked RPC 수신부.
     // 기본 구현은 no-op 이라 reason 이 폐기되며 직후 ConnectionLost 가
@@ -76,6 +90,13 @@ public:
     void Client_ShowPCResultWidget(const FString& WinnerName, int32 WinnerPlayerId);
 
 private:
+    UFUNCTION(Server, Reliable)
+    void Server_SetPlayMode(bool bUseVR);
+
+    void ApplyLocalPlayMode();
+    bool bPlayModeReceived = false;
+    bool bUseVRPlayMode = false;
+
     // 서버로 보내는 RPC
     UFUNCTION(Server, Reliable)
     void Server_RequestBetAction(EBetAction Action, int32 RaiseCount);

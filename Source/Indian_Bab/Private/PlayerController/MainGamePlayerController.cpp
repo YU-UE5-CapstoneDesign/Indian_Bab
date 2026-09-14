@@ -25,6 +25,10 @@
 #include "Components/WidgetComponent.h"
 #include "Components/WidgetSwitcher.h"
 #include "Widget/GameResultWidget.h"
+#include "Engine/World.h"
+#if WITH_EDITOR
+#include "HeadMountedDisplayFunctionLibrary.h"
+#endif
 
 
 AMainGamePlayerController::AMainGamePlayerController()
@@ -52,6 +56,7 @@ void AMainGamePlayerController::BeginPlay()
     if(!IsLocalPlayerController()) 
         return;
 
+    ResolveLocalPlayMode();
     CreateMainGameWidget();
     CreateDeckLeftWidget();
     
@@ -60,8 +65,7 @@ void AMainGamePlayerController::BeginPlay()
 	// ApplyLobbyMappingContext();
 
     // 자동 착석에 맞게 진입
-    EnterUIMode();
-    ApplyMainGameMappingContext();
+    ApplyLocalPlayMode();
 
     if (USettingSubsystem* SettingSS = GetGameInstance()->GetSubsystem<USettingSubsystem>())
     {
@@ -327,7 +331,7 @@ void AMainGamePlayerController::CreateMainGameWidget()
     if (MainGameWidgetInstance)
     {
         MainGameWidgetInstance->InitWidget();
-        if (Cast<ALobbyVRCharacter>(GetPawn()))
+        if (bUseVRPlayMode || Cast<ALobbyVRCharacter>(GetPawn()))
         {
             MainGameWidgetInstance->SetVisibility(ESlateVisibility::Hidden);
         }
@@ -831,5 +835,83 @@ void AMainGamePlayerController::OnMainGameInteract(const FInputActionValue& Valu
     if(ALobbyVRCharacter* VRCharacter = Cast<ALobbyVRCharacter>(GetPawn()))
     {
         VRCharacter->GrabGun();
+    }
+}
+
+
+// BeginPlay와 클라이언트 RPC 순서에 관계없이 같은 로컬 모드를 사용합니다.
+void AMainGamePlayerController::ResolveLocalPlayMode()
+{
+    if (!IsLocalController() || bLocalPlayModeResolved) return;
+    bLocalPlayModeResolved = true;
+
+    const UIndianBabGameInstance* GI = Cast<UIndianBabGameInstance>(GetGameInstance());
+    if (GI && GI->HasSelectedPlayMode())
+    {
+        bUseVRPlayMode = GI->IsVRPlayMode();
+        return;
+    }
+
+    bUseVRPlayMode = false;
+}
+
+// GameMode가 있는 서버에서 PIE 선택을 받아 로컬 입력에도 같은 모드를 적용합니다.
+void AMainGamePlayerController::Client_RequestPlayMode_Implementation(bool bUseGameModePawn, bool bGameModeUsesVR)
+{
+    if (!IsLocalController()) return;
+    ResolveLocalPlayMode();
+#if WITH_EDITOR
+    if (bUseGameModePawn && GetWorld() && GetWorld()->WorldType == EWorldType::PIE)
+    {
+        // HMD 연결 상태나 이전 메뉴 선택으로 GameMode의 지정을 덮어쓰지 않습니다.
+        bUseVRPlayMode = bGameModeUsesVR;
+        const bool bHMDActive = bUseVRPlayMode
+            && UHeadMountedDisplayFunctionLibrary::IsHeadMountedDisplayConnected()
+            && UHeadMountedDisplayFunctionLibrary::EnableHMD(true);
+        if (!bUseVRPlayMode)
+            UHeadMountedDisplayFunctionLibrary::EnableHMD(false);
+        UE_LOG(LogTemp, Log, TEXT("[PlayMode] PIE GameMode DefaultPawnClass: mode=%s HMDActive=%d"),
+            bUseVRPlayMode ? TEXT("VR") : TEXT("PC"), bHMDActive);
+        if (bUseVRPlayMode && !bHMDActive)
+            UE_LOG(LogTemp, Warning, TEXT("[PlayMode] VR Pawn selected without active HMD; use VR Preview with a connected headset for tracking."));
+    }
+#endif
+    if (HasActorBegunPlay()) ApplyLocalPlayMode();
+    Server_SetPlayMode(bUseVRPlayMode);
+}
+
+// 접속당 한 번만 모드를 받아 서버에서 해당 Pawn을 생성합니다.
+void AMainGamePlayerController::Server_SetPlayMode_Implementation(bool bUseVR)
+{
+#if WITH_SERVER_CODE
+    if (bPlayModeReceived) return;
+    AMainGameMode* GM = GetWorld() ? GetWorld()->GetAuthGameMode<AMainGameMode>() : nullptr;
+    if (!GM) return;
+    bUseVRPlayMode = bUseVR;
+    bPlayModeReceived = true;
+    if (!GetPawn()) GM->RestartPlayer(this);
+#endif
+}
+
+// Pawn 복제 순서와 무관하게 선택한 모드의 입력과 화면 UI를 적용합니다.
+void AMainGamePlayerController::ApplyLocalPlayMode()
+{
+    if (!IsLocalController()) return;
+    ApplyMainGameMappingContext();
+    bRMBHeld = false;
+    ResetIgnoreLookInput();
+    if (bUseVRPlayMode)
+    {
+        if (MainGameWidgetInstance)
+            MainGameWidgetInstance->SetVisibility(ESlateVisibility::Collapsed);
+        FInputModeGameOnly Mode;
+        SetInputMode(Mode);
+        bShowMouseCursor = false;
+        bEnableClickEvents = false;
+        bEnableMouseOverEvents = false;
+    }
+    else
+    {
+        EnterUIMode();
     }
 }

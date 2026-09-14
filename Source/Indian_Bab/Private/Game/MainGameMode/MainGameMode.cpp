@@ -5,6 +5,7 @@
 #include "PlayerController/MainGamePlayerController.h"
 #include "Character/LobbyCharacter.h"
 #include "Character/LobbyVRCharacter.h"
+#include "GameInstanceSubsystem/IndianBabGameInstance.h"
 #include "CardController/CardManager.h"
 #include "GameFramework/GameSession.h"
 #include "Kismet/GameplayStatics.h"
@@ -19,6 +20,7 @@
 #include "Misc/CommandLine.h"
 #include "Misc/Parse.h"
 #include "Network/NetworkEndpoints.h"
+#include "Engine/World.h"
 
 
 
@@ -260,26 +262,54 @@ void AMainGameMode::PostLogin(APlayerController* NewPlayer)
 {
 	Super::PostLogin(NewPlayer);
 
-	if (NewPlayer)
-	{
-		FTimerDelegate SeatDelegate;
-		SeatDelegate.BindUObject(this, &AMainGameMode::AssignInitialSeatToPlayer, NewPlayer);
-		GetWorldTimerManager().SetTimerForNextTick(SeatDelegate);
-	}
+    // PIE는 이 맵의 GameMode에 지정한 Pawn을 사용하고, 배포 게임은 메뉴 선택을 사용합니다.
+    if (AMainGamePlayerController* PC = Cast<AMainGamePlayerController>(NewPlayer))
+    {
+        bool bUseGameModePawn = false;
+#if WITH_EDITOR
+        bUseGameModePawn = GetWorld() && GetWorld()->WorldType == EWorldType::PIE;
+#endif
+        const bool bGameModeUsesVR = bUseGameModePawn && DefaultPawnClass && DefaultPawnClass->IsChildOf(ALobbyVRCharacter::StaticClass());
+        PC->Client_RequestPlayMode(bUseGameModePawn, bGameModeUsesVR);
+    }
 
 	// 접속한 플레이어 수 로그 (NumPlayers는 AGameMode 기본 변수)
 	UE_LOG(LogTemp, Warning, TEXT("플레이어 접속 완료. 현재 인원: %d"), NumPlayers);
 }
 
+// PC/VR 선택이 도착하기 전에는 기본 Pawn을 먼저 생성하지 않습니다.
 void AMainGameMode::RestartPlayer(AController* NewPlayer)
 {
-	Super::RestartPlayer(NewPlayer);
+    const AMainGamePlayerController* MainPC = Cast<AMainGamePlayerController>(NewPlayer);
+    if (MainPC && !MainPC->HasReceivedPlayMode()) return;
+    if (!NewPlayer || NewPlayer->GetPawn()) return;
+    Super::RestartPlayer(NewPlayer);
 	if (APlayerController* PC = Cast<APlayerController>(NewPlayer))
 	{
 		FTimerDelegate SeatDelegate;
 		SeatDelegate.BindUObject(this, &AMainGameMode::AssignInitialSeatToPlayer, PC);
 		GetWorldTimerManager().SetTimerForNextTick(SeatDelegate);
 	}
+}
+
+// 호스트의 기기가 아닌 각 컨트롤러의 선택으로 Pawn 클래스를 결정합니다.
+UClass* AMainGameMode::GetDefaultPawnClassForController_Implementation(AController* InController)
+{
+#if WITH_EDITOR
+    // PC/VR 종류뿐 아니라 에디터에서 지정한 정확한 캐릭터 BP를 생성합니다.
+    if (GetWorld() && GetWorld()->WorldType == EWorldType::PIE)
+        return Super::GetDefaultPawnClassForController_Implementation(InController);
+#endif
+    const AMainGamePlayerController* PC = Cast<AMainGamePlayerController>(InController);
+    const UIndianBabGameInstance* GI = Cast<UIndianBabGameInstance>(GetGameInstance());
+    if (PC && GI)
+    {
+        UClass* PawnClass = GI->GetPlayModePawnClass(PC->UsesVRPlayMode()).Get();
+        if (!PawnClass)
+            UE_LOG(LogTemp, Error, TEXT("[PlayMode] Selected Pawn class is missing."));
+        return PawnClass;
+    }
+    return Super::GetDefaultPawnClassForController_Implementation(InController);
 }
 
 void AMainGameMode::GetSeatedPlayers(TArray<APlayerController*>& OutPlayers) const
@@ -891,6 +921,7 @@ void AMainGameMode::PreLogin(const FString&, const FString&, const FUniqueNetIdR
 void AMainGameMode::PreLoginAsync(const FString&, const FString&, const FUniqueNetIdRepl&, const FOnPreLoginCompleteDelegate&) {}
 void AMainGameMode::PostLogin(APlayerController*) {}
 void AMainGameMode::RestartPlayer(AController*) {}
+UClass* AMainGameMode::GetDefaultPawnClassForController_Implementation(AController*) { return nullptr; }
 void AMainGameMode::Logout(AController*) {}
 
 #endif // WITH_SERVER_CODE

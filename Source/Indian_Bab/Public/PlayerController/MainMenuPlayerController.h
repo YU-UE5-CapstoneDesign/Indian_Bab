@@ -10,6 +10,8 @@ class UMainMenuWidget;
 class UUserWidget;
 class UInputAction;
 struct FInputActionValue;
+class FReply;
+class SWidget;
 
 UENUM(BlueprintType)
 enum class EMainMenuInputMode : uint8
@@ -68,6 +70,14 @@ public:
 	virtual void SetupInputComponent() override;
 
 private:
+    // 메뉴를 열기 전에 로컬 플레이 모드를 확정합니다.
+    void BeginPlayModeSelection();
+    void FinishPlayModeSelection(bool bUseVR);
+    void RemovePlayModePrompt();
+    FReply ChooseVRMode();
+    FReply ChoosePCMode();
+    TSharedPtr<SWidget> PlayModePrompt;
+
 	void ApplyMainMenuMappingContext();
 	void RemoveMainMenuMappingContext();
 

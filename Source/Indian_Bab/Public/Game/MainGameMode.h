@@ -36,7 +36,8 @@ public:
 
 	// 플레이어가 서버에 접속 완료했을 때 호출됨.
 	virtual void PostLogin(APlayerController* NewPlayer) override;
-	virtual void RestartPlayer(AController* NewPlayer) override;
+    virtual void RestartPlayer(AController* NewPlayer) override;
+    virtual UClass* GetDefaultPawnClassForController_Implementation(AController* InController) override;
 
 	// 플레이어가 데디 NetConnection을 끊었을 때 — 정상 이탈/강제종료/timeout 공통 SSoT
 	virtual void Logout(AController* Exiting) override;

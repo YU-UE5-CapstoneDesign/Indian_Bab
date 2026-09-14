@@ -24,6 +24,14 @@ class INDIAN_BAB_API UIndianBabGameInstance : public UGameInstance
     GENERATED_BODY()
 
 public:
+    UIndianBabGameInstance();
+
+    // 실행 중 선택한 모드를 맵 이동 후에도 유지합니다.
+    bool HasSelectedPlayMode() const { return bPlayModeSelected; }
+    bool IsVRPlayMode() const { return bUseVRPlayMode; }
+    void SetSelectedPlayMode(bool bUseVR);
+    TSubclassOf<APawn> GetPlayModePawnClass(bool bUseVR) const;
+
     virtual void Init() override;
     virtual void Shutdown() override;
 
@@ -40,6 +48,15 @@ public:
     }
 
 private:
+    UPROPERTY(EditDefaultsOnly, Category = "Play Mode")
+    TSoftClassPtr<APawn> PCCharacterClass;
+
+    UPROPERTY(EditDefaultsOnly, Category = "Play Mode")
+    TSoftClassPtr<APawn> VRCharacterClass;
+
+    bool bPlayModeSelected = false;
+    bool bUseVRPlayMode = false;
+
     void OnNetworkFailure(UWorld* World, UNetDriver* NetDriver,
         ENetworkFailure::Type FailureType, const FString& ErrorString);
 
