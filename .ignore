@@ -1,3 +1,4 @@
+/.claude
 /.agents
 /.git
 /.github
@@ -8,6 +9,8 @@
 /Intermediate
 /Platforms
 /Saved
+/Windows
+/WindowsServer
 /Plugins/MetaXR/Content
 /Plugins/MetaXR/Intermediate
 /Plugins/MetaXR/Shaders
