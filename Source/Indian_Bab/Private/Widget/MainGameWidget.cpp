@@ -55,6 +55,7 @@ void UMainGameWidget::NativeDestruct()
     if (Button_Raise)     Button_Raise->OnClicked.RemoveAll(this);
     if (Button_CheckCall) Button_CheckCall->OnClicked.RemoveAll(this);
     if (Button_Fold)      Button_Fold->OnClicked.RemoveAll(this);
+    if (Button_Ready)     Button_Ready->OnClicked.RemoveAll(this);
 
     // 외부 객체 구독 해제
     if (MainPS)
@@ -78,9 +79,49 @@ void UMainGameWidget::OperateTimer() {
 	Time->SetText(FText::AsNumber(GS->GetRemainingTimeCeil()));
 }
 
+// PC 모드에서의 Ready 상태
+void UMainGameWidget::SetPCReadyMode(bool bWaitingForReady)
+{
+    if (bWaitingForReady && !bPCReadyMode) bPCReadySubmitted = false;
+    bPCReadyMode = bWaitingForReady;
+    if (Button_Ready)
+    {
+        Button_Ready->SetVisibility(bPCReadyMode && !bPCReadySubmitted ? ESlateVisibility::Visible : ESlateVisibility::Collapsed);
+        Button_Ready->SetIsEnabled(bPCReadyMode && !bPCReadySubmitted);
+    }
+    else if (bPCReadyMode)
+    {
+        UE_LOG(LogTemp, Error, TEXT("WBP_MainGame needs a Button named Button_Ready."));
+    }
+    RefreshBettingButtons();
+}
+
+// Ready 버튼 눌렀을 때
+void UMainGameWidget::OnReadyClicked()
+{
+    if (!bPCReadyMode || bPCReadySubmitted) return;
+    AMainGamePlayerController* PC = Cast<AMainGamePlayerController>(GetOwningPlayer());
+    if (!PC || !PC->IsLocalController()) return;
+    bPCReadySubmitted = true;
+    if (Button_Ready)
+    {
+        Button_Ready->SetIsEnabled(false);
+        Button_Ready->SetVisibility(ESlateVisibility::Collapsed);
+    }
+    PC->Server_RequestReady();
+}
+
 void UMainGameWidget::NativeConstruct() 
 {
 	Super::NativeConstruct();
+    if (Button_Ready)
+    {
+        Button_Ready->OnClicked.RemoveAll(this);
+        Button_Ready->OnClicked.AddDynamic(this, &UMainGameWidget::OnReadyClicked);
+        Button_Ready->SetVisibility(bPCReadyMode && !bPCReadySubmitted ? ESlateVisibility::Visible : ESlateVisibility::Collapsed);
+        Button_Ready->SetIsEnabled(bPCReadyMode && !bPCReadySubmitted);
+    }
+
 
 	if (Minus_Button) 
 	{
@@ -111,11 +152,13 @@ void UMainGameWidget::NativeConstruct()
 		WBP_BetProgress->SetPerCent(-0.125f);
 	}
 	MainGamePC = Cast<AMainGamePlayerController>(GetOwningPlayer());
+    RefreshBettingButtons();
 
 }
 
 void UMainGameWidget::MinusButtonClicked()
 {
+    if (!CanUseBettingButtons()) return;
 	if (BetNum <= 1)
 	{
 		UE_LOG(LogTemp, Warning, TEXT("[VR UI] MainGameWidget clicked: Minus blocked BetNum=%d OwnerPC=%s"),
@@ -142,6 +185,7 @@ void UMainGameWidget::MinusButtonClicked()
 
 void UMainGameWidget::PlusButtonClicked()
 {
+    if (!CanUseBettingButtons()) return;
 	if (BetNum >= MaxRaiseBetNum)
 	{
 		UE_LOG(LogTemp, Warning, TEXT("[VR UI] MainGameWidget clicked: Plus blocked BetNum=%d OwnerPC=%s"),
@@ -175,6 +219,7 @@ void UMainGameWidget::PlusButtonClicked()
 
 void UMainGameWidget::OnButtonRaise()
 {
+    if (!CanUseBettingButtons()) return;
 
 	if (!MainGamePC)
 	{
@@ -198,6 +243,7 @@ void UMainGameWidget::OnButtonRaise()
 
 void UMainGameWidget::OnButtonCheckCall()
 {
+    if (!CanUseBettingButtons()) return;
 	if (!MainGamePC)
 	{
 		UE_LOG(LogTemp, Warning, TEXT("[VR UI] MainGameWidget clicked: CheckCall blocked OwnerPC=None BetNum=%d"), BetNum);
@@ -212,6 +258,7 @@ void UMainGameWidget::OnButtonCheckCall()
 
 void UMainGameWidget::OnButtonFold()
 {
+    if (!CanUseBettingButtons()) return;
 	if (!MainGamePC)
 	{
 		UE_LOG(LogTemp, Warning, TEXT("[VR UI] MainGameWidget clicked: Fold blocked OwnerPC=None BetNum=%d"), BetNum);
@@ -238,7 +285,8 @@ void UMainGameWidget::UpdateSubRevolverCount(int32 Count)
 }
 
 void UMainGameWidget::InitWidget()
-{    
+{
+    RefreshBettingButtons();
     MainGamePC = Cast<AMainGamePlayerController>(GetOwningPlayer());
     if (!MainGamePC) return;
 
@@ -258,6 +306,8 @@ int32 UMainGameWidget::GetBetNum() const
 
 bool UMainGameWidget::HandleVRClickAtWidgetLocation(const FVector2D& WidgetLocalHitLocation)
 {
+    RefreshBettingButtons();
+    if (!CanUseBettingButtons()) return false;
 	if (IsButtonUnderWidgetLocation(Plus_Button, WidgetLocalHitLocation))
 	{
 		PlusButtonClicked();
@@ -300,4 +350,52 @@ bool UMainGameWidget::IsButtonUnderWidgetLocation(const UButton* Button, const F
 
 	const FVector2D AbsoluteHitLocation = GetCachedGeometry().LocalToAbsolute(WidgetLocalHitLocation);
 	return Button->GetCachedGeometry().IsUnderLocation(AbsoluteHitLocation);
+}
+
+
+// 복제 도착 순서와 관계없이 현재 게임 상태로 버튼 사용 가능 여부를 판단합니다.
+bool UMainGameWidget::IsOwningPlayerTurn() const
+{
+    const APlayerController* PC = GetOwningPlayer();
+    const AMainPlayerState* PS = PC ? PC->GetPlayerState<AMainPlayerState>() : nullptr;
+    const AMainGameState* GS = GetWorld() ? GetWorld()->GetGameState<AMainGameState>() : nullptr;
+    return !bPCReadyMode && PC && PC->IsLocalController() && PS && GS
+        && GS->CurrentGamePhase == EGamePhase::Playing
+        && GS->CurrentTurnPlayerId == PS->GetPlayerId()
+        && PS->isAlive && !PS->isFold;
+}
+
+// 자기 턴이며 행동 처리 중이 아닐 때만 버튼 입력을 허용합니다.
+bool UMainGameWidget::CanUseBettingButtons() const
+{
+    const AMainGameState* GS = GetWorld() ? GetWorld()->GetGameState<AMainGameState>() : nullptr;
+    return IsOwningPlayerTurn() && GS && !GS->bTurnActionInProgress;
+}
+
+// 활성 상태가 바뀐 버튼만 갱신하여 기존 비활성 스타일을 적용합니다.
+void UMainGameWidget::RefreshBettingButtons()
+{
+    // 행동 잠금과 별개로 자기 턴인 동안 턴 문구를 표시합니다.
+    if (Text_Turn)
+    {
+        const ESlateVisibility TurnVisibility = IsOwningPlayerTurn()
+            ? ESlateVisibility::HitTestInvisible : ESlateVisibility::Collapsed;
+        if (Text_Turn->GetVisibility() != TurnVisibility)
+            Text_Turn->SetVisibility(TurnVisibility);
+    }
+
+    const bool bEnabled = CanUseBettingButtons();
+    for (UButton* Button : {Button_Raise.Get(), Button_CheckCall.Get(),
+        Button_Fold.Get(), Plus_Button.Get(), Minus_Button.Get()})
+    {
+        if (Button && Button->GetIsEnabled() != bEnabled)
+            Button->SetIsEnabled(bEnabled);
+    }
+}
+
+// 별도 알림이 없는 행동 잠금과 늦게 복제된 플레이어 상태도 반영합니다.
+void UMainGameWidget::NativeTick(const FGeometry& MyGeometry, float InDeltaTime)
+{
+    Super::NativeTick(MyGeometry, InDeltaTime);
+    RefreshBettingButtons();
 }

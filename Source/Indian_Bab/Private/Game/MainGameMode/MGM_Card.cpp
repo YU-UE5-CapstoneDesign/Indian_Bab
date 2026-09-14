@@ -4,6 +4,7 @@
 #include "Game/MainGameState.h"
 #include "Kismet/GameplayStatics.h"
 #include "Character/LobbyCharacter.h"
+#include "Character/LobbyPCCharacter.h"
 #include "Character/LobbyVRCharacter.h"
 #include "Actor/SeatActor.h"
 #include "CardController/CardManager.h"
@@ -66,6 +67,7 @@ void AMainGameMode::DistributeCard()
 
 // 게임 결과 확인
 // CurrentWinnerPS 업데이트
+// 카드를 비교해 승자를 정하고 메인 총 단계와 PC 잡기 연출을 시작합니다.
 void AMainGameMode::CheckPlayerCard()
 {
 	AMainGameState* GS = GetGameState<AMainGameState>();
@@ -106,6 +108,14 @@ void AMainGameMode::CheckPlayerCard()
 	}
 
 	ManageShotPhase();
+	if (ALobbyPCCharacter* PCCharacter = Cast<ALobbyPCCharacter>(WinnerCharacter))
+	{
+		if (GS->CurrentBulletCount > 0)
+		{
+			PC->Client_SetPCMainShotMode(true);
+			PCCharacter->Multicast_BeginPCMainRevolver(Revolver);
+		}
+	}
 }
 
 // 활성 인원 중에서 가장 큰 값을 가진 플레이어

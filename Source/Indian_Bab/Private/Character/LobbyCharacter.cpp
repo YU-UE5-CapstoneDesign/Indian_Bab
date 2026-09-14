@@ -3,6 +3,8 @@
 #include "PlayerController/MainGamePlayerController.h"
 #include "InputActionValue.h"
 #include "Camera/CameraComponent.h"
+#include "Components/CapsuleComponent.h"
+#include "GameFramework/CharacterMovementComponent.h"
 #include "GroomComponent.h"
 #include "Interface/InteractableInterface.h"
 #include "Animation/AnimInstance.h"
@@ -113,9 +115,9 @@ ALobbyCharacter::ALobbyCharacter()
 
 	// Create the Camera Component
 	CameraComponent = CreateDefaultSubobject<UCameraComponent>(TEXT("First Person Camera"));
-	CameraComponent->SetupAttachment(FirstPersonMetaHumanBody, FName("head"));
-	CameraComponent->SetRelativeLocationAndRotation(FVector(-2.8f, 8.5, 0.0f), FRotator(0.0f, 90.0f, -90.0f));
-	CameraComponent->bUsePawnControlRotation = true;
+	CameraComponent->SetupAttachment(GetRootComponent());
+	// 실제 카메라 부착과 추적 방식은 PC/VR 자식에서 설정합니다.
+	CameraComponent->bUsePawnControlRotation = false;
 	CameraComponent->bEnableFirstPersonFieldOfView = true;
 	CameraComponent->bEnableFirstPersonScale = true;
 	CameraComponent->FirstPersonFieldOfView = 70.0f;
@@ -140,7 +142,6 @@ ALobbyCharacter::ALobbyCharacter()
 	CardDisplayMesh->SetRelativeLocation(FVector(0.f, 0.f, 100.f));
 	CardDisplayMesh->SetRelativeScale3D(FVector(0.1f));
 }
-
 
 // Called when the game starts or when spawned
 void ALobbyCharacter::BeginPlay()
@@ -351,40 +352,13 @@ void ALobbyCharacter::Tick(float DeltaTime)
 
 void ALobbyCharacter::UpdateAimFromView()
 {
-
-	// 내가 조종하는 캐릭터이고, 앉아있을 때만 작동
-	if (bIsSitting && IsLocallyControlled())
-	{
-
-		if (APlayerController* PC = Cast<APlayerController>(GetController()))
-		{
-			// (현재 마우스 좌우 방향) - (의자에 안착한 캡슐의 고정된 방향) = 순수하게 목이 돌아간 각도
-			const FRotator Aim = UKismetMathLibrary::NormalizedDeltaRotator(GetActorRotation(), PC->GetControlRotation());
-
-			// 내 화면을 위해 로컬 변수 즉시 업데이트
-			ReplicatedAim = Aim;
-
-			// 남들도 내 고개 돌아가는 걸 볼 수 있게 서버로 전송
-			Server_UpdateAim(ReplicatedAim);
-		}
-	}
 }
-
 
 // Called to bind functionality to input
 void ALobbyCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputComponent)
 {
 	Super::SetupPlayerInputComponent(PlayerInputComponent);
-
-	if (UEnhancedInputComponent* EnhancedInputComponent = CastChecked<UEnhancedInputComponent>(PlayerInputComponent))
-	{
-		if (IA_Interact)
-		{
-			EnhancedInputComponent->BindAction(IA_Interact, ETriggerEvent::Triggered, this, &ALobbyCharacter::OnInteract);
-		}
-	}
 }
-
 
 void ALobbyCharacter::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
 {
@@ -392,36 +366,12 @@ void ALobbyCharacter::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutL
 
 	// bIsSitting 변수를 멀티플레이 환경에서 동기화
 	DOREPLIFETIME(ALobbyCharacter, bIsSitting);
+	DOREPLIFETIME(ALobbyCharacter, bIsSittingEnded);
 	DOREPLIFETIME(ALobbyCharacter, GunHoldReason);
 	DOREPLIFETIME(ALobbyCharacter, DeskRevolver);
 	DOREPLIFETIME(ALobbyCharacter, ReplicatedAim);
 	DOREPLIFETIME(ALobbyCharacter, ActiveRevolver);
 }
-
-
-void ALobbyCharacter::OnInteract(const FInputActionValue& Value)
-{
-	// 카메라 위치에서 시선 방향으로 레이캐스트 쏘기
-	FVector StartLoc = CameraComponent->GetComponentLocation();
-	FVector EndLoc = StartLoc + (CameraComponent->GetForwardVector() * InteractRange);
-
-	FHitResult HitResult;
-	FCollisionQueryParams QueryParams;
-	QueryParams.AddIgnoredActor(this); // 자기 자신은 무시
-
-	if (GetWorld()->LineTraceSingleByChannel(HitResult, StartLoc, EndLoc, ECC_Visibility, QueryParams))
-	{
-		AActor* HitActor = HitResult.GetActor();
-
-		// 맞은 액터가 IInteractableInterface를 상속받았는지 확인!
-		if (HitActor && HitActor->Implements<UInteractableInterface>())
-		{
-			// 서버에 상호작용 요청
-			ServerInteract(HitActor);
-		}
-	}
-}
-
 
 void ALobbyCharacter::ServerInteract_Implementation(AActor* InteractableActor)
 {
@@ -432,7 +382,6 @@ void ALobbyCharacter::ServerInteract_Implementation(AActor* InteractableActor)
 	}
 }
 
-
 void ALobbyCharacter::SetSittingState(bool bSitting)
 {
 	if (HasAuthority())
@@ -441,7 +390,6 @@ void ALobbyCharacter::SetSittingState(bool bSitting)
 		OnRep_IsSitting(); // 서버 자신도 시야/회전 제한이 즉각 적용되도록 수동 호출
 	}
 }
-
 
 void ALobbyCharacter::MulticastPlaySitAnimation_Implementation()
 {
@@ -454,7 +402,14 @@ void ALobbyCharacter::MulticastPlaySitAnimation_Implementation()
 	}
 }
 
+// 모든 클라이언트에서 공통 총 잡기 몽타주 처리를 실행합니다.
 void ALobbyCharacter::Multicast_PlayGrabGunMontage_Implementation(EGunHoldReason Reason)
+{
+	PlayGrabGunMontage(Reason);
+}
+
+// 총을 잡는 이유에 맞는 몽타주를 재생하고 종료 처리를 연결합니다.
+void ALobbyCharacter::PlayGrabGunMontage(EGunHoldReason Reason)
 {
 	GunHoldReason = Reason;
 
@@ -478,9 +433,8 @@ void ALobbyCharacter::Multicast_PlayGrabGunMontage_Implementation(EGunHoldReason
 		MontageToPlay = WinAimMontage;
 	}
 
-	if (MontageToPlay)
+	if (MontageToPlay && AnimInstance->Montage_Play(MontageToPlay, 1.0f) > 0.0f)
 	{
-		AnimInstance->Montage_Play(MontageToPlay, 1.0f);
 		FOnMontageEnded EndDelegate;
 		EndDelegate.BindUObject(this, &ALobbyCharacter::OnGrabGunMontageEnded);
 		AnimInstance->Montage_SetEndDelegate(EndDelegate, MontageToPlay);
@@ -592,10 +546,9 @@ void ALobbyCharacter::AttachRevolverToSocket()
 	
 }
 
-void ALobbyCharacter::ReturnRevolverToDesk()
+// 1인칭과 3인칭 손의 총 메시를 숨기고 비웁니다.
+void ALobbyCharacter::ClearHeldRevolverMeshes()
 {
-	ARevolver* RevolverToReturn = ActiveRevolver ? ActiveRevolver.Get() : DeskRevolver.Get();
-
 	if (FP_RevolverMesh)
 	{
 		FP_RevolverMesh->SetVisibility(false);
@@ -607,6 +560,14 @@ void ALobbyCharacter::ReturnRevolverToDesk()
 		TP_RevolverMesh->SetVisibility(false);
 		TP_RevolverMesh->SetSkeletalMeshAsset(nullptr);
 	}
+}
+
+// 손의 총 메시를 정리하고 책상 총을 다시 표시합니다.
+void ALobbyCharacter::ReturnRevolverToDesk()
+{
+	ARevolver* RevolverToReturn = ActiveRevolver ? ActiveRevolver.Get() : DeskRevolver.Get();
+
+	ClearHeldRevolverMeshes();
 
 	if (!RevolverToReturn) return;
 	RevolverToReturn->SetActorHiddenInGame(false);
@@ -615,6 +576,16 @@ void ALobbyCharacter::ReturnRevolverToDesk()
 	{
 		RevolverToReturn->CollisionSphere->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
 	}
+}
+
+// 즉시 착석과 앉기 몽타주 종료에서 함께 사용하는 상태 처리 함수
+void ALobbyCharacter::CompleteSeatedState()
+{
+	bIsSitting = true;
+	bIsSittingEnded = true;
+	GetCharacterMovement()->StopMovementImmediately();
+	GetCharacterMovement()->DisableMovement();
+	bUseControllerRotationYaw = false;
 }
 
 void ALobbyCharacter::StartSitTransition(ASeatActor* TargetSeat)
@@ -634,7 +605,6 @@ void ALobbyCharacter::StartSitTransition(ASeatActor* TargetSeat)
 	}
 }
 
-
 void ALobbyCharacter::OnSitMontageEnded(UAnimMontage* Montage, bool bInterrupted)
 {
 	// 앉기 몽타주가 끝났다면 (서버에서만 실행됨)
@@ -647,8 +617,11 @@ void ALobbyCharacter::OnSitMontageEnded(UAnimMontage* Montage, bool bInterrupted
 			Client_LockCameraAfterSit(CurrentSeat->SitTarget->GetComponentRotation());
 		}
 
-		// 완벽하게 안착했으므로 무브먼트 컴포넌트를 비활성화
-		GetCharacterMovement()->DisableMovement();
+		// // 완벽하게 안착했으므로 무브먼트 컴포넌트를 비활성화
+		// GetCharacterMovement()->DisableMovement();
+
+		// 즉시 착석과 동일한 이동 차단 및 착석 완료 상태를 적용합니다.
+		CompleteSeatedState();
 
 		// 델리게이트 해제 (메모리 릭 방지)
 		UAnimInstance* MainAnimInstance = GetMesh()->GetAnimInstance();
@@ -656,8 +629,6 @@ void ALobbyCharacter::OnSitMontageEnded(UAnimMontage* Montage, bool bInterrupted
 		{
 			MainAnimInstance->OnMontageEnded.RemoveDynamic(this, &ALobbyCharacter::OnSitMontageEnded);
 		}
-
-		bIsSittingEnded = true; // 앉기 애니메이션이 완전히 끝났음을 표시하는 플래그
 	}
 }
 
@@ -700,36 +671,12 @@ void ALobbyCharacter::OnPutBackGunMontageEnded(UAnimMontage* Montage, bool bInte
 
 void ALobbyCharacter::OnRep_IsSitting()
 {
-	// 캡슐(몸통) 전체가 마우스를 따라 도는 것을 막습니다.
-	bUseControllerRotationYaw = !bIsSitting;
-
-	if (IsLocallyControlled())
-	{
-		if (bIsSitting)
-		{
-			// 앉는 애니메이션이 재생되는 동안 카메라는 마우스를 무시하고 머리 뼈(head)를 따라가며 돌아앉는 연출을 보여줍니다.
-			CameraComponent->SetRelativeLocationAndRotation(FVector(-2.8f, 8.5, 0.0f), FRotator(0.0f, 90.0f, -90.0f));
-			CameraComponent->bUsePawnControlRotation = false;
-			APlayerController* PC = Cast<APlayerController>(GetController());
-			PC->SetControlRotation(GetActorRotation()); // 카메라가 현재 몸통이 바라보는 방향으로 즉시 회전하도록 강제
-		}
-		else
-		{
-			// 일어섰을 때 초기화 (제한 완벽 해제)
-			CameraComponent->bUsePawnControlRotation = true;
-
-			if (APlayerController* PC = Cast<APlayerController>(GetController()))
-			{
-				if (APlayerCameraManager* CamManager = PC->PlayerCameraManager)
-				{
-					CamManager->ViewYawMin = 0.0f;
-					CamManager->ViewYawMax = 359.999f;
-					CamManager->ViewPitchMin = -70.0f;
-					CamManager->ViewPitchMax = 80.0f;
-				}
-			}
-		}
-	}
+    if (bIsSitting)
+    {
+        bUseControllerRotationYaw = false;
+        GetCharacterMovement()->StopMovementImmediately();
+        GetCharacterMovement()->DisableMovement();
+    }
 }
 
 void ALobbyCharacter::OnRep_PlayerState()
@@ -739,39 +686,15 @@ void ALobbyCharacter::OnRep_PlayerState()
 	BindPlayerStateDelegates();
 }
 
-void ALobbyCharacter::Client_LockCameraAfterSit_Implementation(FRotator FinalSitRotation)
+// 카메라 적용은 장치별 자식 클래스에서 구현합니다.
+void ALobbyCharacter::OnSeatedCameraReady(const FRotator& SeatRotation)
 {
-	if (APlayerController* PC = Cast<APlayerController>(GetController()))
-	{
-		// 애니메이션이 끝난 바로 그 순간의 '실제 카메라가 바라보는 앞방향(Forward Vector)'을 추출하여 회전값으로 변환합니다.
-		// GetComponentRotation()을 그대로 쓰면 카메라에 적용된 상대 회전값(Roll -90, Yaw 90) 때문에 ControlRotation 적용 시 축이 90도 꼬여버립니다.
-		FRotator CurrentCameraRot = CameraComponent->GetForwardVector().Rotation();
-
-		// 마우스 컨트롤(ControlRotation)을 현재 카메라가 보고 있는 방향으로 완벽하게 덮어씌웁니다.
-		// 이렇게 하면 애니메이션에서 마우스로 조작 권한이 넘어갈 때 화면이 단 1픽셀도 튀지 않습니다!
-		PC->SetControlRotation(CurrentCameraRot);
-
-		// 다시 마우스로 카메라를 움직일 수 있도록 활성화
-		CameraComponent->bUsePawnControlRotation = true;
-
-		// 시야각 제한 (최종 안착 방향 기준 좌/우 60도)
-
-		if (APlayerCameraManager* CamManager = PC->PlayerCameraManager)
-		{
-			float CenterYaw = FinalSitRotation.Yaw;
-
-			// 언리얼 카메라 매니저 버그 방지 (0~360 사이 값으로 정규화)
-			float MinYaw = FMath::Fmod(CenterYaw - 60.0f + 360.0f, 360.0f);
-			float MaxYaw = FMath::Fmod(CenterYaw + 60.0f + 360.0f, 360.0f);
-
-			CamManager->ViewYawMin = MinYaw;
-			CamManager->ViewYawMax = MaxYaw;
-			CamManager->ViewPitchMin = -45.0f;
-			CamManager->ViewPitchMax = 45.0f;
-		}
-	}
 }
 
+void ALobbyCharacter::Client_LockCameraAfterSit_Implementation(FRotator FinalSitRotation)
+{
+	OnSeatedCameraReady(FinalSitRotation);
+}
 
 void ALobbyCharacter::Client_PrepareSit_Implementation(FVector TargetLocation, FRotator TargetRotation)
 {
@@ -779,13 +702,10 @@ void ALobbyCharacter::Client_PrepareSit_Implementation(FVector TargetLocation, F
 	SetActorLocationAndRotation(TargetLocation, TargetRotation);
 }
 
-
 void ALobbyCharacter::Server_UpdateAim_Implementation(FRotator NewAim)
 {
 	ReplicatedAim = NewAim; // 서버가 값을 받아서 모든 클라이언트에게 자동 전파
 }
-
-
 
 void ALobbyCharacter::SetActiveRevolver(ARevolver* NewRevolver)
 {
@@ -816,19 +736,11 @@ void ALobbyCharacter::BeginManualMainRevolverPhase()
 	ForceNetUpdate();
 }
 
+// 메인 총의 사용 상태를 정리하고 원래 책상 위치로 돌려놓습니다.
 void ALobbyCharacter::ReturnMainRevolverToTableImmediately()
 {
-	if (FP_RevolverMesh)
-	{
-		FP_RevolverMesh->SetVisibility(false);
-		FP_RevolverMesh->SetSkeletalMeshAsset(nullptr);
-	}
 
-	if (TP_RevolverMesh)
-	{
-		TP_RevolverMesh->SetVisibility(false);
-		TP_RevolverMesh->SetSkeletalMeshAsset(nullptr);
-	}
+	ClearHeldRevolverMeshes();
 
 	bShowMainShotAimLine = false;
 	bMainRevolverGrabbed = false;
@@ -862,27 +774,18 @@ void ALobbyCharacter::SetMainShotAimLineVisible(bool bVisible)
 	bShowMainShotAimLine = bVisible;
 }
 
+// 조준 표시는 필요한 자식 클래스에서 구현합니다.
 void ALobbyCharacter::DrawMainShotAimLine()
 {
-	// 자기 화면에서만 보이게
-	if (!IsLocallyControlled()) return;
+}
 
-	// 메인 리볼버 조준 중일 때만
-	if (!bShowMainShotAimLine) return;
-	if (GunHoldReason != EGunHoldReason::Win) return;
+// 구체적인 착석 방식은 PC/VR 자식에서 구현합니다.
+void ALobbyCharacter::InitSeatedAtSeat(ASeatActor* TargetSeat)
+{
+}
 
-	const FVector Forward = FP_RevolverMesh->GetForwardVector();
-	const FVector Start = FP_RevolverMesh->GetComponentLocation();
-	const FVector End = Start + Forward * 2500.0f;
-
-	DrawDebugLine(
-		GetWorld(),
-		Start,
-		End,
-		FColor::Red,
-		false,
-		0.0f,
-		0,
-		2.0f 
-	);
+// 공통 부모는 특정 장치의 조준 방향을 선택하지 않습니다.
+bool ALobbyCharacter::GetMainShotTrace(float TraceDistance, FVector& OutStart, FVector& OutEnd) const
+{
+    return false;
 }

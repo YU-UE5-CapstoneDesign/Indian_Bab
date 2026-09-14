@@ -3,6 +3,7 @@
 #include "Engine/Engine.h"
 #include "Engine/World.h"
 #include "Engine/NetDriver.h"
+#include "GameFramework/Pawn.h"
 #include "GameInstanceSubsystem/ConnectivitySubsystem.h"
 #include "GameInstanceSubsystem/SessionSubsystem.h"
 
@@ -48,6 +49,27 @@ namespace
         default:                                          return TEXT("Unknown");
         }
     }
+}
+
+// 기존 캐릭터 BP를 두 모드의 기본 클래스로 재사용합니다.
+UIndianBabGameInstance::UIndianBabGameInstance()
+{
+    // 초기 모듈 등록 중 Anim BP가 로드되지 않도록 실제 사용 시에만 불러옵니다.
+    PCCharacterClass = TSoftClassPtr<APawn>(FSoftObjectPath(TEXT("/Game/Blueprint/Character/BP_LobbyCharacterBase_PC.BP_LobbyCharacterBase_PC_C")));
+    VRCharacterClass = TSoftClassPtr<APawn>(FSoftObjectPath(TEXT("/Game/Blueprint/Character/BP_LobbyCharacterBase_VR.BP_LobbyCharacterBase_VR_C")));
+}
+
+// 기기 연결 여부가 아니라 사용자가 확정한 모드를 보관합니다.
+void UIndianBabGameInstance::SetSelectedPlayMode(bool bUseVR)
+{
+    bPlayModeSelected = true;
+    bUseVRPlayMode = bUseVR;
+}
+
+// 서버에서도 동일한 BP 목록으로 플레이어별 Pawn을 선택합니다.
+TSubclassOf<APawn> UIndianBabGameInstance::GetPlayModePawnClass(bool bUseVR) const
+{
+    return bUseVR ? VRCharacterClass.LoadSynchronous() : PCCharacterClass.LoadSynchronous();
 }
 
 void UIndianBabGameInstance::Init()

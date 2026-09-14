@@ -1,4 +1,4 @@
-﻿#include "PlayerController/MainGamePlayerController.h"
+#include "PlayerController/MainGamePlayerController.h"
 #include "EnhancedInputSubsystems.h"
 #include "InputMappingContext.h"
 #include "EnhancedInputComponent.h"
@@ -11,6 +11,7 @@
 #include "GameFramework/PlayerState.h"
 #include "Character/LobbyCameraManager.h"
 #include "Character/LobbyCharacter.h"
+#include "Character/LobbyPCCharacter.h"
 #include "Character/LobbyVRCharacter.h"
 #include "InputCoreTypes.h"
 #include "Interface/InteractableInterface.h"
@@ -23,6 +24,11 @@
 #include "Blueprint/UserWidget.h"
 #include "Components/WidgetComponent.h"
 #include "Components/WidgetSwitcher.h"
+#include "Widget/GameResultWidget.h"
+#include "Engine/World.h"
+#if WITH_EDITOR
+#include "HeadMountedDisplayFunctionLibrary.h"
+#endif
 
 
 AMainGamePlayerController::AMainGamePlayerController()
@@ -50,19 +56,26 @@ void AMainGamePlayerController::BeginPlay()
     if(!IsLocalPlayerController()) 
         return;
 
+    ResolveLocalPlayMode();
     CreateMainGameWidget();
     CreateDeckLeftWidget();
-    EnterCameraMode();
-	ApplyLobbyMappingContext();
+    
+    // 자동 착석이므로 주석 처리
+    // EnterCameraMode();
+	// ApplyLobbyMappingContext();
+
+    // 자동 착석에 맞게 진입
+    ApplyLocalPlayMode();
 
     if (USettingSubsystem* SettingSS = GetGameInstance()->GetSubsystem<USettingSubsystem>())
     {
         LookSensitivity = SettingSS->GetMouseSensitivity();
     }
 
-	FInputModeGameOnly Mode;
-	SetInputMode(Mode);
-	bShowMouseCursor = false;
+    // 자동 착석이므로 주석 처리
+	// FInputModeGameOnly Mode;
+	// SetInputMode(Mode);
+	// bShowMouseCursor = false;
 
     TrySendSteamNickname();
 
@@ -142,9 +155,16 @@ void AMainGamePlayerController::HandleConnectivityRestored()
 }
 
 
+// 게임 입력을 연결하고 PC 좌클릭 격발 입력을 등록합니다.
 void AMainGamePlayerController::SetupInputComponent()
 {
     Super::SetupInputComponent();
+
+    // PC 좌클릭은 VR 입력 에셋과 독립적으로 연결합니다. 실행 시 Pawn 종류를 검사합니다.
+    if (IsLocalPlayerController() && InputComponent)
+    {
+        InputComponent->BindKey(EKeys::LeftMouseButton, IE_Pressed, this, &AMainGamePlayerController::OnPCMainShotPressed);
+    }
 
 	if (!IsLocalPlayerController()) 
         return;
@@ -311,7 +331,7 @@ void AMainGamePlayerController::CreateMainGameWidget()
     if (MainGameWidgetInstance)
     {
         MainGameWidgetInstance->InitWidget();
-        if (Cast<ALobbyVRCharacter>(GetPawn()))
+        if (bUseVRPlayMode || Cast<ALobbyVRCharacter>(GetPawn()))
         {
             MainGameWidgetInstance->SetVisibility(ESlateVisibility::Hidden);
         }
@@ -410,19 +430,25 @@ void AMainGamePlayerController::TrySendSteamNickname()
     bSteamNicknameSent = true;
 }
 
+// 모드 확정/빙의 순서가 달라도 VR 또는 미생성 Pawn에 PC 입력을 적용하지 않습니다.
+bool AMainGamePlayerController::CanProcessPCInput() const
+{
+    return IsLocalController() && !bUseVRPlayMode && Cast<ALobbyPCCharacter>(GetPawn()) != nullptr;
+}
+
 void AMainGamePlayerController::OnMainGameLook(const FInputActionValue& Value)
 {
-    if (!bRMBHeld) return;
-
-    const FVector2D LookAxis = Value.Get<FVector2D>();
-
-    AddYawInput(LookAxis.X * LookSensitivity);
-    AddPitchInput(-LookAxis.Y * LookSensitivity);
+    if (!CanProcessPCInput() || !bRMBHeld) return;
+    if (ALobbyPCCharacter* PCCharacter = Cast<ALobbyPCCharacter>(GetPawn()))
+    {
+        PCCharacter->Look(Value.Get<FVector2D>(), LookSensitivity);
+    }
 }
 
 
 void AMainGamePlayerController::OnMainGameRMBPressed(const FInputActionValue& Value)
 {
+    if (!CanProcessPCInput()) return;
     bRMBHeld = true;
     EnterCameraMode();
 }
@@ -430,6 +456,7 @@ void AMainGamePlayerController::OnMainGameRMBPressed(const FInputActionValue& Va
 
 void AMainGamePlayerController::OnMainGameRMBReleased(const FInputActionValue& Value)
 {
+    if (!CanProcessPCInput()) return;
     bRMBHeld = false;
     EnterUIMode();
 }
@@ -437,38 +464,42 @@ void AMainGamePlayerController::OnMainGameRMBReleased(const FInputActionValue& V
 
 void AMainGamePlayerController::OnMainGameCheckCall(const FInputActionValue& Value)
 {
+    if (!CanProcessPCInput()) return;
     RequestCheckCall();
 }
 
 
 void AMainGamePlayerController::OnMainGameFold(const FInputActionValue& Value)
 {
+    if (!CanProcessPCInput()) return;
     RequestFold();
 }
 
 
 void AMainGamePlayerController::OnMainGameRaise(const FInputActionValue& Value)
 {
+    if (!CanProcessPCInput() || !MainGameWidgetInstance) return;
     RequestRaise(MainGameWidgetInstance->GetBetNum());
 }
 
 
 void AMainGamePlayerController::OnLobbyMove(const FInputActionValue& Value)
 {
-    const FVector2D MoveAxis = Value.Get<FVector2D>();
-    if (APawn* MyPawn = GetPawn())
+    if (!CanProcessPCInput()) return;
+    if (ALobbyPCCharacter* PCCharacter = Cast<ALobbyPCCharacter>(GetPawn()))
     {
-        MyPawn->AddMovementInput(MyPawn->GetActorForwardVector(), MoveAxis.Y);
-        MyPawn->AddMovementInput(MyPawn->GetActorRightVector(), MoveAxis.X);
+        PCCharacter->Move(Value.Get<FVector2D>());
     }
 }
 
 
 void AMainGamePlayerController::OnLobbyLook(const FInputActionValue& Value)
 {
-    const FVector2D LookAxis = Value.Get<FVector2D>();
-    AddYawInput(LookAxis.X * LookSensitivity);
-    AddPitchInput(-LookAxis.Y * LookSensitivity);
+    if (!CanProcessPCInput()) return;
+    if (ALobbyPCCharacter* PCCharacter = Cast<ALobbyPCCharacter>(GetPawn()))
+    {
+        PCCharacter->Look(Value.Get<FVector2D>(), LookSensitivity);
+    }
 }
 
 void AMainGamePlayerController::OnRep_PlayerState()
@@ -512,11 +543,30 @@ void AMainGamePlayerController::Server_RequestMainRevolverShot_Implementation()
 #endif
 }
 
+// 앉았을 때 대기화면 생성
 void AMainGamePlayerController::ClientOnSeated_Implementation()
 {
-    // 로비 조작(WASD)을 끄고 메인 게임(마우스/UI) 조작으로 스위칭
+    // 로비 조작(WASD)을 끄고 메인 게임(마우스/UI) 조작으로 스위칭(기존)
+    // 현재는 자동 착석시작이라 메인 게임 조작으로 시작
     ApplyMainGameMappingContext();
-    EnterUIMode();
+
+    // 착석 시(게임 시작 시) 메인 게임 위젯 생성
+    if (!MainGameWidgetInstance) CreateMainGameWidget();
+
+    // ReadyButton만 보이게
+    MainGameWidgetInstance->SetVisibility(ESlateVisibility::Visible);
+    MainGameWidgetInstance->SetPCReadyMode(true);
+}
+
+// 접속 인원 모두 레디를 눌렀을 때
+void AMainGamePlayerController::Client_FinishPCReady_Implementation()
+{
+    // 메인 게임 위젯 보이게
+    if (MainGameWidgetInstance)
+    {
+        MainGameWidgetInstance->SetPCReadyMode(false);
+        MainGameWidgetInstance->SetVisibility(ESlateVisibility::Visible);
+    }
 }
 
 void AMainGamePlayerController::Server_RequestReady_Implementation()
@@ -539,16 +589,35 @@ int AMainGamePlayerController::GetPlayerIdSafe()
 
 void AMainGamePlayerController::OnMainGameTabPressed(const FInputActionValue& Value)
 {
-
+    if (!CanProcessPCInput()) return;
     if (DeckLeftWidgetInstance)
     {
         DeckLeftWidgetInstance->VisibleWidget();
     }
 }
 
+// PC 격발 모드를 전환하고 메인 게임 위젯의 표시 여부를 설정합니다.
+void AMainGamePlayerController::Client_SetPCMainShotMode_Implementation(bool bEnabled)
+{
+    bPCMainShotMode = bEnabled;
+    if (MainGameWidgetInstance)
+    {
+        MainGameWidgetInstance->SetVisibility(bEnabled ? ESlateVisibility::Hidden : ESlateVisibility::Visible);
+    }
+}
+
+// PC 격발 모드에서 좌클릭하면 서버에 격발을 요청합니다.
+void AMainGamePlayerController::OnPCMainShotPressed()
+{
+    if (!CanProcessPCInput() || !bPCMainShotMode) return;
+    Server_RequestMainRevolverShot();
+}
+
+// VR 캐릭터의 발사 입력을 서버 격발 요청으로 전달합니다.
 void AMainGamePlayerController::OnFire(const FInputActionValue& Value)
 {
-	Server_RequestMainRevolverShot();
+    // PC는 좌클릭 경로만 사용하여 같은 입력에서 두 번 격발하는 것을 막습니다.
+    if (Cast<ALobbyVRCharacter>(GetPawn())) Server_RequestMainRevolverShot();
 }
 
 void AMainGamePlayerController::OnRightTriggerClickStarted(const FInputActionValue& Value)
@@ -709,6 +778,53 @@ bool AMainGamePlayerController::CloseVRMenu()
 	return false;
 }
 
+// 기존 결과 위젯을 PC 화면에 표시하고 마우스로 조작하게 합니다.
+void AMainGamePlayerController::Client_ShowPCResultWidget_Implementation(const FString& WinnerName, int32 WinnerPlayerId)
+{
+    if (!IsLocalController() || Cast<ALobbyVRCharacter>(GetPawn())) return;
+
+    if (!PCResultWidgetClass)
+    {
+        UE_LOG(LogTemp, Error, TEXT("PCResultWidgetClass is not assigned."));
+        return;
+    }
+
+    if (!PCResultWidgetInstance)
+    {
+        PCResultWidgetInstance = CreateWidget<UGameResultWidget>(this, PCResultWidgetClass);
+    }
+
+    if (!PCResultWidgetInstance) return;
+
+    // 격발 입력과 기존 게임 화면을 정리합니다.
+    bPCMainShotMode = false;
+
+    if (MainGameWidgetInstance)
+    {
+        MainGameWidgetInstance->SetVisibility(ESlateVisibility::Collapsed);
+    }
+
+    if (!PCResultWidgetInstance->IsInViewport())
+    {
+        PCResultWidgetInstance->AddToPlayerScreen(100);
+    }
+
+    // PC 결과창 크기와 화면 중앙 배치
+    PCResultWidgetInstance->SetResult(WinnerName, GetPlayerIdSafe() == WinnerPlayerId);
+    PCResultWidgetInstance->SetVisibility(ESlateVisibility::Visible);
+    // PC 인스턴스의 글자와 버튼을 중앙 기준으로 함께 축소합니다.
+    PCResultWidgetInstance->SetRenderTransformPivot(FVector2D(0.5f, 0.5f));
+    PCResultWidgetInstance->SetRenderScale(FVector2D(0.5f, 0.5f));
+    PCResultWidgetInstance->SetPositionInViewport(FVector2D::ZeroVector, false);
+    PCResultWidgetInstance->SetAnchorsInViewport(FAnchors(0.5f, 0.5f));
+    PCResultWidgetInstance->SetAlignmentInViewport(FVector2D(0.5f, 0.5f));
+
+    FInputModeUIOnly Mode;
+    Mode.SetWidgetToFocus(PCResultWidgetInstance->TakeWidget());
+    SetInputMode(Mode);
+    bShowMouseCursor = true;
+}
+
 void AMainGamePlayerController::OnDebugRightTriggerPressed()
 {
 	UE_LOG(LogTemp, Warning, TEXT("[VR UI] Debug R press"));
@@ -732,5 +848,83 @@ void AMainGamePlayerController::OnMainGameInteract(const FInputActionValue& Valu
     if(ALobbyVRCharacter* VRCharacter = Cast<ALobbyVRCharacter>(GetPawn()))
     {
         VRCharacter->GrabGun();
+    }
+}
+
+
+// BeginPlay와 클라이언트 RPC 순서에 관계없이 같은 로컬 모드를 사용합니다.
+void AMainGamePlayerController::ResolveLocalPlayMode()
+{
+    if (!IsLocalController() || bLocalPlayModeResolved) return;
+    bLocalPlayModeResolved = true;
+
+    const UIndianBabGameInstance* GI = Cast<UIndianBabGameInstance>(GetGameInstance());
+    if (GI && GI->HasSelectedPlayMode())
+    {
+        bUseVRPlayMode = GI->IsVRPlayMode();
+        return;
+    }
+
+    bUseVRPlayMode = false;
+}
+
+// GameMode가 있는 서버에서 PIE 선택을 받아 로컬 입력에도 같은 모드를 적용합니다.
+void AMainGamePlayerController::Client_RequestPlayMode_Implementation(bool bUseGameModePawn, bool bGameModeUsesVR)
+{
+    if (!IsLocalController()) return;
+    ResolveLocalPlayMode();
+#if WITH_EDITOR
+    if (bUseGameModePawn && GetWorld() && GetWorld()->WorldType == EWorldType::PIE)
+    {
+        // HMD 연결 상태나 이전 메뉴 선택으로 GameMode의 지정을 덮어쓰지 않습니다.
+        bUseVRPlayMode = bGameModeUsesVR;
+        const bool bHMDActive = bUseVRPlayMode
+            && UHeadMountedDisplayFunctionLibrary::IsHeadMountedDisplayConnected()
+            && UHeadMountedDisplayFunctionLibrary::EnableHMD(true);
+        if (!bUseVRPlayMode)
+            UHeadMountedDisplayFunctionLibrary::EnableHMD(false);
+        UE_LOG(LogTemp, Log, TEXT("[PlayMode] PIE GameMode DefaultPawnClass: mode=%s HMDActive=%d"),
+            bUseVRPlayMode ? TEXT("VR") : TEXT("PC"), bHMDActive);
+        if (bUseVRPlayMode && !bHMDActive)
+            UE_LOG(LogTemp, Warning, TEXT("[PlayMode] VR Pawn selected without active HMD; use VR Preview with a connected headset for tracking."));
+    }
+#endif
+    if (HasActorBegunPlay()) ApplyLocalPlayMode();
+    Server_SetPlayMode(bUseVRPlayMode);
+}
+
+// 접속당 한 번만 모드를 받아 서버에서 해당 Pawn을 생성합니다.
+void AMainGamePlayerController::Server_SetPlayMode_Implementation(bool bUseVR)
+{
+#if WITH_SERVER_CODE
+    if (bPlayModeReceived) return;
+    AMainGameMode* GM = GetWorld() ? GetWorld()->GetAuthGameMode<AMainGameMode>() : nullptr;
+    if (!GM) return;
+    bUseVRPlayMode = bUseVR;
+    bPlayModeReceived = true;
+    if (!GetPawn()) GM->RestartPlayer(this);
+#endif
+}
+
+// Pawn 복제 순서와 무관하게 선택한 모드의 입력과 화면 UI를 적용합니다.
+void AMainGamePlayerController::ApplyLocalPlayMode()
+{
+    if (!IsLocalController()) return;
+    ApplyMainGameMappingContext();
+    bRMBHeld = false;
+    ResetIgnoreLookInput();
+    if (bUseVRPlayMode)
+    {
+        if (MainGameWidgetInstance)
+            MainGameWidgetInstance->SetVisibility(ESlateVisibility::Collapsed);
+        FInputModeGameOnly Mode;
+        SetInputMode(Mode);
+        bShowMouseCursor = false;
+        bEnableClickEvents = false;
+        bEnableMouseOverEvents = false;
+    }
+    else
+    {
+        EnterUIMode();
     }
 }

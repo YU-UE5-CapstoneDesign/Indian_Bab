@@ -1,4 +1,4 @@
-﻿#pragma once
+#pragma once
 
 #include "CoreMinimal.h"
 #include "GameFramework/PlayerController.h"
@@ -9,6 +9,7 @@ class UMainGameWidget;
 class UDeckLeftWidget;
 class UInputMappingContext;
 class UInputAction;
+class UGameResultWidget;
 
 UCLASS()
 class INDIAN_BAB_API AMainGamePlayerController : public APlayerController
@@ -16,10 +17,26 @@ class INDIAN_BAB_API AMainGamePlayerController : public APlayerController
 	GENERATED_BODY()
 	
 public:
-	AMainGamePlayerController();
+    AMainGamePlayerController();
+
+    // 서버가 접속한 플레이어의 로컬 모드를 요청합니다.
+    UFUNCTION(Client, Reliable)
+    void Client_RequestPlayMode(bool bUseGameModePawn, bool bGameModeUsesVR);
+
+    bool HasReceivedPlayMode() const { return bPlayModeReceived; }
+    bool UsesVRPlayMode() const { return bUseVRPlayMode; }
+
+
+
 
     virtual void BeginPlay() override;
     virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
+
+private:
+    void ResolveLocalPlayMode();
+    bool bLocalPlayModeResolved = false;
+
+public:
 
     // 데디 AGameSession::KickPlayer(reason) → ClientWasKicked RPC 수신부.
     // 기본 구현은 no-op 이라 reason 이 폐기되며 직후 ConnectionLost 가
@@ -49,12 +66,37 @@ public:
     UFUNCTION(Client, Reliable)
     void ClientOnSeated();
 
+    UFUNCTION(Client, Reliable)
+    void Client_FinishPCReady();
+
+    UFUNCTION(Client, Reliable)
+    void Client_SetPCMainShotMode(bool bEnabled);
+
     UFUNCTION(Server, Reliable)
     void Server_RequestReady();
 
     int GetPlayerIdSafe();
 
+    // PC 화면에 표시할 기존 결과 위젯 클래스
+    UPROPERTY(EditDefaultsOnly, Category = "UI|Result")
+    TSubclassOf<UGameResultWidget> PCResultWidgetClass;
+
+    // 생성한 PC 결과 위젯
+    UPROPERTY(Transient)
+    TObjectPtr<UGameResultWidget> PCResultWidgetInstance;
+
+    // 서버가 해당 PC 플레이어에게 결과 화면 표시를 요청합니다.
+    UFUNCTION(Client, Reliable)
+    void Client_ShowPCResultWidget(const FString& WinnerName, int32 WinnerPlayerId);
+
 private:
+    UFUNCTION(Server, Reliable)
+    void Server_SetPlayMode(bool bUseVR);
+
+    void ApplyLocalPlayMode();
+    bool bPlayModeReceived = false;
+    bool bUseVRPlayMode = false;
+
     // 서버로 보내는 RPC
     UFUNCTION(Server, Reliable)
     void Server_RequestBetAction(EBetAction Action, int32 RaiseCount);
@@ -80,6 +122,8 @@ private:
     void CreateDeckLeftWidget();
 
 	// 입력 바인딩 함수
+    bool CanProcessPCInput() const;
+
     void OnMainGameLook(const FInputActionValue& Value);
 
     void OnMainGameRMBPressed(const FInputActionValue& Value);
@@ -99,6 +143,9 @@ private:
     void OnMainGameTabPressed(const FInputActionValue& Value);
 
     void OnFire(const FInputActionValue& Value);
+    void OnPCMainShotPressed();
+    bool bPCMainShotMode = false;
+
 
     void OnRightTriggerClickStarted(const FInputActionValue& Value);
 
@@ -121,6 +168,8 @@ private:
 
     // 감도
     float LookSensitivity = 1.0f;
+
+
 
     // 카메라 모드/UI 모드 관리
     bool bRMBHeld = false;
