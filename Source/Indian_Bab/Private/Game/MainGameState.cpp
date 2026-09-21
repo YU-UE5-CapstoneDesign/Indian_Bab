@@ -42,6 +42,7 @@ void AMainGameState::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLi
 	DOREPLIFETIME(AMainGameState, CurrentGamePhase);
 	DOREPLIFETIME(AMainGameState, AlivePlayerCount);
 	DOREPLIFETIME(AMainGameState, ReadyPlayerCount);
+    DOREPLIFETIME(AMainGameState, LobbyReadyStatus);
 	DOREPLIFETIME(AMainGameState, CurrentTurnPlayerId);
 	DOREPLIFETIME(AMainGameState, CurrentPlayerIndex);
 	DOREPLIFETIME(AMainGameState, CurrentBulletCount);

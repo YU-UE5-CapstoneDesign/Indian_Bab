@@ -2,6 +2,7 @@
 #include "Camera/CameraComponent.h"
 #include "Camera/PlayerCameraManager.h"
 #include "Components/CapsuleComponent.h"
+#include "Components/SkeletalMeshComponent.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "EnhancedInputComponent.h"
 #include "InputActionValue.h"
@@ -10,11 +11,15 @@
 #include "Actor/SeatActor.h"
 #include "Actor/Revolver.h"
 #include "Animation/AnimInstance.h"
-#include "DrawDebugHelpers.h"
+#include "PCCrosshairWidget.h"
+#include "UObject/ConstructorHelpers.h"
 
 // 기존 카메라와 메시를 재사용하고 PC 입력에 필요한 기본값을 설정합니다.
 ALobbyPCCharacter::ALobbyPCCharacter()
 {
+    static ConstructorHelpers::FClassFinder<UPCCrosshairWidget> CrosshairBP(
+        TEXT("/Game/Blueprint/Widget/WBP_PCCrosshairWidget"));
+    if (CrosshairBP.Succeeded()) PCCrosshairWidgetClass = CrosshairBP.Class;
     bUseControllerRotationYaw = true;
     bUseControllerRotationPitch = false;
     bUseControllerRotationRoll = false;
@@ -30,6 +35,8 @@ void ALobbyPCCharacter::BeginPlay()
 {
     Super::BeginPlay();
     if (CameraComponent) CameraComponent->bLockToHmd = false;
+    if (FirstPersonMetaHumanBody)
+        DefaultFirstPersonAnimClass = FirstPersonMetaHumanBody->GetAnimClass();
 }
 
 // 착석 중에는 이동하지 않습니다.
@@ -116,6 +123,9 @@ void ALobbyPCCharacter::Multicast_CompletePCMainRevolverGrab_Implementation()
 	AttachRevolverToSocket();
 	bMainRevolverGrabbed = true;
 	bShowMainShotAimLine = true;
+    if (IsLocallyControlled())
+        ApplySeatedCamera(GetActorRotation(), GetActorRotation());
+    UpdateMainAimPresentation();
 }
 
 void ALobbyPCCharacter::Multicast_ClearPCMainRevolver_Implementation()
@@ -156,6 +166,7 @@ void ALobbyPCCharacter::OnInteract(const FInputActionValue& Value)
 
 void ALobbyPCCharacter::UpdateAimFromView()
 {
+    UpdateMainAimPresentation();
 
 	// 내가 조종하는 캐릭터이고, 앉아있을 때만 작동
 	if (bIsSitting && IsLocallyControlled())
@@ -173,6 +184,33 @@ void ALobbyPCCharacter::UpdateAimFromView()
 			Server_UpdateAim(ReplicatedAim);
 		}
 	}
+    // The PC ABP reads this scalar; derive it on every proxy from the replicated rotator.
+    ReplicatedAimYaw = -ReplicatedAim.Yaw;
+    ReplicatedAimPitch = -ReplicatedAim.Pitch;
+}
+
+void ALobbyPCCharacter::UpdateMainAimPresentation()
+{
+    const bool bSharePose = GunHoldReason == EGunHoldReason::Win;
+    if (bSharePose == bUsingSharedAimPose || !FirstPersonMetaHumanBody
+        || !ThirdPersonMetaHumanBody || !CameraComponent) return;
+    if (bSharePose)
+    {
+        if (!ThirdPersonMetaHumanBody->GetAnimClass()) return;
+        bSavedFirstPersonFOV = CameraComponent->bEnableFirstPersonFieldOfView;
+        bSavedFirstPersonScale = CameraComponent->bEnableFirstPersonScale;
+        // Both visible bodies now copy the same master pose, without the FP-only rig.
+        FirstPersonMetaHumanBody->SetAnimInstanceClass(ThirdPersonMetaHumanBody->GetAnimClass());
+        CameraComponent->bEnableFirstPersonFieldOfView = false;
+        CameraComponent->bEnableFirstPersonScale = false;
+    }
+    else
+    {
+        FirstPersonMetaHumanBody->SetAnimInstanceClass(DefaultFirstPersonAnimClass);
+        CameraComponent->bEnableFirstPersonFieldOfView = bSavedFirstPersonFOV;
+        CameraComponent->bEnableFirstPersonScale = bSavedFirstPersonScale;
+    }
+    bUsingSharedAimPose = bSharePose;
 }
 
 void ALobbyPCCharacter::OnRep_IsSitting()
@@ -248,34 +286,52 @@ void ALobbyPCCharacter::ApplySeatedCamera(const FRotator& InitialViewRotation, c
 	}
 }
 
-void ALobbyPCCharacter::DrawMainShotAimLine()
-{
- // VR은 기존 파란선, PC는 카메라 정면의 디버그 점을 사용합니다.
- if (!IsLocallyControlled() || !GetWorld()) return;
- if (!bShowMainShotAimLine || GunHoldReason != EGunHoldReason::Win
-     || !bMainRevolverGrabbed || !ActiveRevolver) return;
- APlayerController* PC = Cast<APlayerController>(GetController());
- if (!PC) return;
- FVector ViewLocation;
- FRotator ViewRotation;
- PC->GetPlayerViewPoint(ViewLocation, ViewRotation);
- // 카메라 앞에 배치하고 전경으로 그려 주변 물체에 점이 가려지지 않게 합니다.
- const FVector DotLocation = ViewLocation + ViewRotation.Vector() * 100.0f;
- DrawDebugPoint(GetWorld(), DotLocation, FMath::Max(1.0f, PCMainShotDotSize),
-     FColor::Red, false, 0.0f, SDPG_Foreground);
-}
-
 void ALobbyPCCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputComponent)
 {
-	Super::SetupPlayerInputComponent(PlayerInputComponent);
+    Super::SetupPlayerInputComponent(PlayerInputComponent);
 
-	if (UEnhancedInputComponent* EnhancedInputComponent = CastChecked<UEnhancedInputComponent>(PlayerInputComponent))
-	{
-		if (IA_Interact)
-		{
-			EnhancedInputComponent->BindAction(IA_Interact, ETriggerEvent::Triggered, this, &ALobbyPCCharacter::OnInteract);
-		}
-	}
+    if (UEnhancedInputComponent* EnhancedInputComponent = CastChecked<UEnhancedInputComponent>(PlayerInputComponent))
+    {
+        if (IA_Interact)
+        {
+            EnhancedInputComponent->BindAction(IA_Interact, ETriggerEvent::Triggered, this, &ALobbyPCCharacter::OnInteract);
+        }
+    }
+}
+
+void ALobbyPCCharacter::DrawMainShotAimLine()
+{
+    // 캐릭터 Tick에서 갱신하므로 HUD나 조준점 자체가 숨겨져도 다시 표시할 수 있습니다.
+    const bool bVisible = ShouldShowMainShotCrosshair();
+    if (bVisible && !PCCrosshairWidget && PCCrosshairWidgetClass)
+    {
+        APlayerController* PC = Cast<APlayerController>(GetController());
+        PCCrosshairWidget = CreateWidget<UPCCrosshairWidget>(PC, PCCrosshairWidgetClass);
+        if (PCCrosshairWidget) PCCrosshairWidget->AddToPlayerScreen(10);
+    }
+    if (PCCrosshairWidget) PCCrosshairWidget->SetCrosshairVisible(bVisible);
+}
+
+void ALobbyPCCharacter::EndPlay(const EEndPlayReason::Type EndPlayReason)
+{
+    if (PCCrosshairWidget)
+    {
+        PCCrosshairWidget->RemoveFromParent();
+        PCCrosshairWidget = nullptr;
+    }
+    Super::EndPlay(EndPlayReason);
+}
+
+bool ALobbyPCCharacter::ShouldShowMainShotCrosshair() const
+{
+    const APlayerController* PC = Cast<APlayerController>(GetController());
+    return PC
+        && PC->IsLocalController()
+        && bShowMainShotAimLine
+        && GunHoldReason == EGunHoldReason::Win
+        && bMainRevolverGrabbed
+        && ActiveRevolver != nullptr
+        && !bIsPuttingBackGun;
 }
 
 

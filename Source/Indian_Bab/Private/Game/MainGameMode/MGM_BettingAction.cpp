@@ -338,6 +338,7 @@ void AMainGameMode::HandlePutBackGunMontageFinished(ALobbyCharacter* Character, 
 
 	if (Reason == EGunHoldReason::Win)
 	{
+		Character->ReturnMainRevolverToTableImmediately();
 		bMainRevolverPutBackInProgress = false;
 		FinishMainShotPhase();
 		return;
@@ -487,9 +488,8 @@ void AMainGameMode::StartMainRevolverPutBack()
 
 	UE_LOG(LogTemp, Warning, TEXT("[GM] Start Main Revolver PutBack"));
 
-	WinnerCharacter->ReturnMainRevolverToTableImmediately();
-	bMainRevolverPutBackInProgress = false;
-	FinishMainShotPhase();
+	// 메인 리볼버를 즉시 반환하지 않고 WinEndMontage가 끝난 뒤 반환합니다.
+	WinnerCharacter->Multicast_PutBackGunMontage(EGunHoldReason::Win);
 }
 
 void AMainGameMode::InitMainRevolverLiveBulletIfNeeded()

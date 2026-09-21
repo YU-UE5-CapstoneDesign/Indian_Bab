@@ -385,8 +385,7 @@ void UMainGameWidget::RefreshBettingButtons()
     }
 
     const bool bEnabled = CanUseBettingButtons();
-    for (UButton* Button : {Button_Raise.Get(), Button_CheckCall.Get(),
-        Button_Fold.Get(), Plus_Button.Get(), Minus_Button.Get()})
+    for (UButton* Button : {Button_Raise.Get(), Button_CheckCall.Get(), Button_Fold.Get(), Plus_Button.Get(), Minus_Button.Get()})
     {
         if (Button && Button->GetIsEnabled() != bEnabled)
             Button->SetIsEnabled(bEnabled);

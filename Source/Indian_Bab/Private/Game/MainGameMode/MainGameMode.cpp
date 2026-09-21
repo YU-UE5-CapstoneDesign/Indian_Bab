@@ -101,6 +101,21 @@ void AMainGameMode::NotifyMatchClearHost()
 
 void AMainGameMode::Logout(AController* Exiting)
 {
+    const bool bHostLeaving = !LobbyPlayers.IsEmpty() && LobbyPlayers[0] == Exiting;
+    LobbyPlayers.Remove(Cast<APlayerController>(Exiting));
+    if (bHostLeaving && bGameStartRequested)
+    {
+        if (AMainGameState* GS = GetGameState<AMainGameState>())
+        {
+            if (GS->CurrentGamePhase == EGamePhase::Starting)
+            {
+                GetWorldTimerManager().ClearTimer(TimerHandle);
+                bGameStartRequested = false;
+                GS->ClearTimerInfo();
+                GS->SetGamePhase(EGamePhase::Lobby);
+            }
+        }
+    }
 	// 떠나는 SteamID 추출 — Super 호출 전(PlayerState 정리되기 전).
 	FString LeavingSteamId;
 	if (Exiting && Exiting->PlayerState)
@@ -261,6 +276,8 @@ void AMainGameMode::PreLoginAsync(const FString& Options, const FString& Address
 void AMainGameMode::PostLogin(APlayerController* NewPlayer)
 {
 	Super::PostLogin(NewPlayer);
+    LobbyPlayers.AddUnique(NewPlayer);
+    CheckGameStart();
 
     // PIE는 이 맵의 GameMode에 지정한 Pawn을 사용하고, 배포 게임은 메뉴 선택을 사용합니다.
     if (AMainGamePlayerController* PC = Cast<AMainGamePlayerController>(NewPlayer))
@@ -340,9 +357,22 @@ void AMainGameMode::HandlePlayerReady(APlayerController* ReadyPlayer)
 	GetSeatedPlayers(SeatedPlayers);
 	if (!SeatedPlayers.Contains(ReadyPlayer)) return;
 
-	// 테스트 빌드에서도 착석한 플레이어가 각자 준비 버튼을 눌러야 합니다.
+    if (!LobbyPlayers.Contains(ReadyPlayer) || LobbyPlayers[0] == ReadyPlayer) return;
+
+	// 준비 요청은 중복 집계하지 않으며 자동 시작하지 않습니다.
 	ReadyPlayers.AddUnique(ReadyPlayer);
 	CheckGameStart();
+}
+
+void AMainGameMode::HandlePlayerStart(APlayerController* RequestPlayer)
+{
+    if (!HasAuthority() || !IsValid(RequestPlayer)) return;
+    CheckGameStart();
+    const AMainGameState* GS = GetGameState<AMainGameState>();
+    if (!GS || GS->CurrentGamePhase != EGamePhase::Lobby || bGameStartRequested
+        || LobbyPlayers.IsEmpty() || LobbyPlayers[0] != RequestPlayer
+        || !GS->LobbyReadyStatus.bCanStart) return;
+    StartGameAfterAllReady();
 }
 
 int32 AMainGameMode::GetRequiredReadyPlayerCount() const
@@ -488,10 +518,7 @@ void AMainGameMode::StartGameAfterAllReady()
 	}
 
 	AMainGameState* GS = GetGameState<AMainGameState>();
-	if (!GS)
-	{
-		return;
-	}
+    if (!GS || GS->CurrentGamePhase != EGamePhase::Lobby || !GS->LobbyReadyStatus.bCanStart) return;
 
 	MainCardManager = GetCardManager();
 	if (!MainCardManager)
@@ -500,8 +527,10 @@ void AMainGameMode::StartGameAfterAllReady()
 		return;
 	}
 	bGameStartRequested = true;
+    GS->LobbyReadyStatus.bCanStart = false;
+    GS->ForceNetUpdate();
 	GS->SetTimerInfo(3.0f);
-	UE_LOG(LogTemp, Warning, TEXT("[GM] All seated players pressed Ready. Game starts in 3 seconds."));
+	UE_LOG(LogTemp, Warning, TEXT("[GM] Host pressed Start with all players ready. Game starts in 3 seconds."));
 
 	GS->SetGamePhase(EGamePhase::Starting);
 
@@ -544,7 +573,7 @@ void AMainGameMode::PlayerSeated(APlayerController* SeatedPlayer, ASeatActor* Se
 		|| SeatedChair->GetOccupant() != SeatedPlayer->GetPawn()) return;
 	GS->SeatChairArray.AddUnique(SeatedChair);
 	GS->SeatChairArray.Sort([](const ASeatActor& A, const ASeatActor& B) { return A.SeatOrder < B.SeatOrder; });
-	// 착석만으로는 준비 완료로 처리하지 않습니다.
+	// 첫 입장자만 자동 준비이며 나머지는 Ready 입력을 기다립니다.
 	CheckGameStart();
 }
 
@@ -557,19 +586,37 @@ void AMainGameMode::CheckGameStart()
 
 	TArray<APlayerController*> SeatedPlayers;
 	GetSeatedPlayers(SeatedPlayers);
-	ReadyPlayers.RemoveAll([&SeatedPlayers](const TObjectPtr<APlayerController>& PC)
+    LobbyPlayers.RemoveAll([](const TObjectPtr<APlayerController>& PC) { return !IsValid(PC.Get()); });
+	ReadyPlayers.RemoveAll([this, &SeatedPlayers](const TObjectPtr<APlayerController>& PC)
 	{
-		return !IsValid(PC.Get()) || !SeatedPlayers.Contains(PC.Get());
+		return !IsValid(PC.Get()) || !LobbyPlayers.Contains(PC) || !SeatedPlayers.Contains(PC.Get());
 	});
+    APlayerController* Host = LobbyPlayers.IsEmpty() ? nullptr : LobbyPlayers[0].Get();
+    if (Host) ReadyPlayers.AddUnique(Host);
+
+    FLobbyReadyStatus Status;
+    Status.HostPlayerId = Host && Host->PlayerState ? Host->PlayerState->GetPlayerId() : INDEX_NONE;
+    Status.ConnectedPlayerCount = LobbyPlayers.Num();
+    for (APlayerController* ReadyPC : ReadyPlayers)
+    {
+        if (ReadyPC && ReadyPC->PlayerState)
+            Status.ReadyPlayerIds.AddUnique(ReadyPC->PlayerState->GetPlayerId());
+    }
 	GS->ChangeReadyPlayerCount(ReadyPlayers.Num());
-	const bool bAllReady = IsCurrentPlayerCountInGameRange() && ReadyPlayers.Num() == SeatedPlayers.Num();
+    const bool bAllReady = Host && Status.HostPlayerId != INDEX_NONE
+        && IsCurrentPlayerCountInGameRange()
+        && SeatedPlayers.Num() == LobbyPlayers.Num()
+        && Status.ReadyPlayerIds.Num() == LobbyPlayers.Num();
 	if (!bAllReady && bGameStartRequested)
 	{
 		GetWorldTimerManager().ClearTimer(TimerHandle);
 		bGameStartRequested = false;
+        GS->ClearTimerInfo();
 		GS->SetGamePhase(EGamePhase::Lobby);
 	}
-	if (bAllReady && !bGameStartRequested) StartGameAfterAllReady();
+    Status.bCanStart = bAllReady && !bGameStartRequested && GS->CurrentGamePhase == EGamePhase::Lobby;
+    GS->LobbyReadyStatus = MoveTemp(Status);
+    GS->ForceNetUpdate();
 }
 
 // MainGame 시작(반복됨)
