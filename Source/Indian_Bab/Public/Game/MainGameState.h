@@ -46,6 +46,25 @@ public:
 	EBetAction ActionType;
 };
 
+// 로비 표시 상태를 하나의 복제 속성으로 전달합니다.
+USTRUCT(BlueprintType)
+struct FLobbyReadyStatus
+{
+    GENERATED_BODY()
+
+    UPROPERTY(BlueprintReadOnly)
+    int32 HostPlayerId = INDEX_NONE;
+
+    UPROPERTY(BlueprintReadOnly)
+    int32 ConnectedPlayerCount = 0;
+
+    UPROPERTY(BlueprintReadOnly)
+    TArray<int32> ReadyPlayerIds;
+
+    UPROPERTY(BlueprintReadOnly)
+    bool bCanStart = false;
+};
+
 UCLASS()
 class INDIAN_BAB_API AMainGameState : public AGameState
 {
@@ -67,6 +86,9 @@ public:
 	// 현재 의자에 앉아 준비를 마친 플레이어 수
 	UPROPERTY(ReplicatedUsing = OnRep_ReadyPlayerCount, BlueprintReadOnly, Category = "Game State")
 	int32 ReadyPlayerCount;
+
+    UPROPERTY(Replicated, BlueprintReadOnly, Category = "Game State|Lobby")
+    FLobbyReadyStatus LobbyReadyStatus;
 
 	// 현재 의자에 앉아 준비를 마친 플레이어 수
 	UPROPERTY(ReplicatedUsing = OnRep_AlivePlayerCount, BlueprintReadOnly, Category = "Game State")
