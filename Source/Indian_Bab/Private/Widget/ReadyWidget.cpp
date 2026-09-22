@@ -1,5 +1,7 @@
 #include "Widget/ReadyWidget.h"
 #include "Components/Button.h"
+#include "Components/ButtonSlot.h"
+#include "Components/CanvasPanelSlot.h"
 #include "Components/TextBlock.h"
 #include "Game/MainGameState.h"
 #include "PlayerController/MainGamePlayerController.h"
@@ -10,9 +12,46 @@ void UReadyWidget::NativeConstruct()
     SetVisibility(ESlateVisibility::SelfHitTestInvisible);
     if (Button_Ready)
     {
+        if (UCanvasPanelSlot* ButtonCanvasSlot = Cast<UCanvasPanelSlot>(Button_Ready->Slot))
+        {
+            ButtonCanvasSlot->SetAnchors(FAnchors(0.5f, 0.5f));
+            ButtonCanvasSlot->SetAlignment(FVector2D(0.5f, 0.5f));
+            ButtonCanvasSlot->SetPosition(FVector2D(0.0f, 250.0f));
+            ButtonCanvasSlot->SetSize(FVector2D(600.0f, 200.0f));
+            ButtonCanvasSlot->SetAutoSize(false);
+            ButtonCanvasSlot->SetZOrder(0);
+        }
+
         Button_Ready->OnClicked.RemoveAll(this);
         Button_Ready->OnClicked.AddDynamic(this, &UReadyWidget::OnReadyButtonClicked);
     }
+
+    if (Text_ReadyPlayer)
+    {
+        if (UCanvasPanelSlot* CountCanvasSlot = Cast<UCanvasPanelSlot>(Text_ReadyPlayer->Slot))
+        {
+            CountCanvasSlot->SetAnchors(FAnchors(0.5f, 0.5f));
+            CountCanvasSlot->SetAlignment(FVector2D(0.5f, 0.5f));
+            CountCanvasSlot->SetPosition(FVector2D(0.0f, 195.0f));
+            CountCanvasSlot->SetSize(FVector2D(300.0f, 80.0f));
+            CountCanvasSlot->SetAutoSize(false);
+            CountCanvasSlot->SetZOrder(1);
+        }
+        Text_ReadyPlayer->SetJustification(ETextJustify::Center);
+        Text_ReadyPlayer->SetVisibility(ESlateVisibility::HitTestInvisible);
+    }
+
+    if (Text_ReadyState)
+    {
+        if (UButtonSlot* ReadyTextSlot = Cast<UButtonSlot>(Text_ReadyState->Slot))
+        {
+            ReadyTextSlot->SetHorizontalAlignment(HAlign_Center);
+            ReadyTextSlot->SetVerticalAlignment(VAlign_Center);
+            ReadyTextSlot->SetPadding(FMargin(0.0f));
+        }
+        Text_ReadyState->SetJustification(ETextJustify::Center);
+    }
+
     RefreshReadyState();
 }
 

@@ -124,6 +124,18 @@ public:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "VR UI", meta = (ClampMin = "0.0"))
 	float ReadyWidgetDelaySeconds = 0.5f;
 
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "VR UI|Ready")
+	FVector ReadyWidgetRelativeLocation = FVector(100.0f, 0.0f, -10.0f);
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "VR UI|Ready")
+	FRotator ReadyWidgetRelativeRotation = FRotator(0.0f, 180.0f, 0.0f);
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "VR UI|Ready", meta = (ClampMin = "0.001"))
+	float ReadyWidgetWorldScale = 0.1f;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "VR UI|Ready")
+	FVector2D ReadyWidgetDrawSize = FVector2D(1000.0f, 1000.0f);
+
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "VR|Seat")
 	bool bUseCapsuleHalfHeightSeatOffset = true;
 
