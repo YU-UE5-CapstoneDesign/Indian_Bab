@@ -6,6 +6,7 @@
 //#include "Components/MultiLineEditableText.h"
 #include "Components/Button.h"
 #include "Widget/BetProgressWidget.h"
+#include "Widget/TurnInfoWidget.h"
 #include "Game/MainGameState.h"
 #include "PlayerController\MainGamePlayerController.h"
 
@@ -152,6 +153,10 @@ void UMainGameWidget::NativeConstruct()
 		WBP_BetProgress->SetPerCent(-0.125f);
 	}
 	MainGamePC = Cast<AMainGamePlayerController>(GetOwningPlayer());
+    if (WBP_TurnInfoWidget)
+    {
+        WBP_TurnInfoWidget->InitializeForPlayer(MainGamePC);
+    }
     RefreshBettingButtons();
 
 }
@@ -290,6 +295,11 @@ void UMainGameWidget::InitWidget()
     MainGamePC = Cast<AMainGamePlayerController>(GetOwningPlayer());
     if (!MainGamePC) return;
 
+    if (WBP_TurnInfoWidget)
+    {
+        WBP_TurnInfoWidget->InitializeForPlayer(MainGamePC);
+    }
+
     MainPS = MainGamePC->GetPlayerState<AMainPlayerState>();
     if (!MainPS) return;
 
@@ -376,14 +386,6 @@ bool UMainGameWidget::CanUseBettingButtons() const
 void UMainGameWidget::RefreshBettingButtons()
 {
     // 행동 잠금과 별개로 자기 턴인 동안 턴 문구를 표시합니다.
-    if (Text_Turn)
-    {
-        const ESlateVisibility TurnVisibility = IsOwningPlayerTurn()
-            ? ESlateVisibility::HitTestInvisible : ESlateVisibility::Collapsed;
-        if (Text_Turn->GetVisibility() != TurnVisibility)
-            Text_Turn->SetVisibility(TurnVisibility);
-    }
-
     const bool bEnabled = CanUseBettingButtons();
     for (UButton* Button : {Button_Raise.Get(), Button_CheckCall.Get(), Button_Fold.Get(), Plus_Button.Get(), Minus_Button.Get()})
     {

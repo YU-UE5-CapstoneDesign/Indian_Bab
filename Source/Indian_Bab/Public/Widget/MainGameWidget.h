@@ -10,6 +10,7 @@ class UDeckLeftWidget;
 class UTextBlock;
 class UEditableTextBox;
 class UBetProgressWidget;
+class UTurnInfoWidget;
 class AMainGamePlayerController;
 class AMainPlayerState;
 
@@ -28,7 +29,7 @@ private:
 
     // 자기 턴에만 표시하는 기존 WBP 텍스트입니다.
     UPROPERTY(meta = (BindWidgetOptional))
-    TObjectPtr<UTextBlock> Text_Turn;
+    TObjectPtr<UTurnInfoWidget> WBP_TurnInfoWidget;
 
     UFUNCTION()
     void OnReadyClicked();

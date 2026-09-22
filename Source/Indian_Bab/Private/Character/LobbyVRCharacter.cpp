@@ -127,7 +127,7 @@ void ALobbyVRCharacter::BeginPlay()
 	ConfigureLocalVRTracking();
 	ConfigureVRSeatedState();
 	ConfigureWidgetInteraction();
-	InitializeTurnInfoWidgetComponent();
+	ApplyVRWidgetComponentState(TurnInfoWidgetComponent, false);
 }
 
 
@@ -136,7 +136,6 @@ void ALobbyVRCharacter::PossessedBy(AController* NewController)
 	Super::PossessedBy(NewController);
 	ConfigureLocalVRTracking();
 	ConfigureWidgetInteraction();
-	InitializeTurnInfoWidgetComponent();
 }
 
 void ALobbyVRCharacter::OnRep_PlayerState()
@@ -144,7 +143,6 @@ void ALobbyVRCharacter::OnRep_PlayerState()
 	Super::OnRep_PlayerState();
 	ConfigureLocalVRTracking();
 	ConfigureWidgetInteraction();
-	InitializeTurnInfoWidgetComponent();
 }
 
 void ALobbyVRCharacter::PawnClientRestart()
@@ -152,7 +150,6 @@ void ALobbyVRCharacter::PawnClientRestart()
 	Super::PawnClientRestart();
 	ConfigureLocalVRTracking();
 	ConfigureWidgetInteraction();
-	InitializeTurnInfoWidgetComponent();
 }
 
 void ALobbyVRCharacter::Tick(float DeltaTime)
@@ -880,7 +877,7 @@ void ALobbyVRCharacter::ShowMainGameWidget()
 	if (!IsLocallyControlled()) return;
 
 	ConfigureWidgetInteraction();
-	InitializeTurnInfoWidgetComponent();
+	ApplyVRWidgetComponentState(TurnInfoWidgetComponent, false);
 	InitializeMainGameWidgetComponents();
 	SetActiveVRUI(EVRActiveUI::InGame);
 }

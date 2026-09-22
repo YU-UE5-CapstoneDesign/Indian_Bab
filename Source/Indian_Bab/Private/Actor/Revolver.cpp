@@ -30,7 +30,7 @@ ARevolver::ARevolver()
 	// 리볼버 메시 위쪽에 위치 (Z축 오프셋)
 	BulletCountWidgetComponent->SetRelativeLocation(FVector(0.0f, 0.0f, CountWidgetHeight));
 	// 총이 눕거나 회전해도 위젯 회전은 총의 회전을 상속하지 않습니다.
-	BulletCountWidgetComponent->SetAbsolute(false, true, false);
+	BulletCountWidgetComponent->SetAbsolute(false, false, false);
 
 	// 월드 스페이스로 설정 (카메라를 항상 바라보게 하려면 Screen Space 사용 가능)
 	BulletCountWidgetComponent->SetWidgetSpace(EWidgetSpace::World);
