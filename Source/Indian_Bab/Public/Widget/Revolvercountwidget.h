@@ -8,9 +8,9 @@
 class UTextBlock;
 
 /**
- * ¸ÞÀÎ ¸®º¼¹ö À§¿¡ Ç¥½ÃµÇ´Â º£ÆÃ ¹ß¼ö À§Á¬
- * ¿¹: "3/8" Çü½ÄÀ¸·Î ÇöÀç ´©Àû ¹æ¾Æ¼è È½¼ö Ç¥½Ã
- * EGamePhase::Playing »óÅÂÀÏ ¶§¸¸ Ç¥½ÃµÊ
+ * ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ Ç¥ï¿½ÃµÇ´ï¿½ ï¿½ï¿½ï¿½ï¿½ ï¿½ß¼ï¿½ ï¿½ï¿½ï¿½ï¿½
+ * ï¿½ï¿½: "3/8" ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½Æ¼ï¿½ È½ï¿½ï¿½ Ç¥ï¿½ï¿½
+ * EGamePhase::Playing ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ Ç¥ï¿½Ãµï¿½
  */
 UCLASS()
 class INDIAN_BAB_API URevolverCountWidget : public UUserWidget
@@ -19,19 +19,22 @@ class INDIAN_BAB_API URevolverCountWidget : public UUserWidget
 
 public:
 	/**
-	 * Ç¥½Ã ÅØ½ºÆ® ¾÷µ¥ÀÌÆ®
-	 * @param CurrentCount ÇöÀç ´©Àû ¹æ¾Æ¼è È½¼ö
-	 * @param MaxCount ÃÖ´ë ¹æ¾Æ¼è È½¼ö (±âº» 8)
+	 * Ç¥ï¿½ï¿½ ï¿½Ø½ï¿½Æ® ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Æ®
+	 * @param CurrentCount ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½Æ¼ï¿½ È½ï¿½ï¿½
+	 * @param MaxCount ï¿½Ö´ï¿½ ï¿½ï¿½Æ¼ï¿½ È½ï¿½ï¿½ (ï¿½âº» 8)
 	 */
 	UFUNCTION(BlueprintCallable, Category = "RevolverCount")
 	void UpdateCount(int32 CurrentCount, int32 MaxCount = 8);
 
-	/** Playing ÆäÀÌÁî ¿©ºÎ¿¡ µû¶ó À§Á¬ ÀüÃ¼ °¡½Ã¼º ¼³Á¤ */
+	UFUNCTION(BlueprintCallable, Category = "SubRevolverCount")
+	void UpdateFoldCount(int32 Count);
+
+	/** Playing ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½Î¿ï¿½ ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½Ã¼ ï¿½ï¿½ï¿½Ã¼ï¿½ ï¿½ï¿½ï¿½ï¿½ */
 	UFUNCTION(BlueprintCallable, Category = "RevolverCount")
 	void SetPlayingPhase(bool bIsPlaying);
 
 protected:
-	/** BP¿¡¼­ ¹ÙÀÎµùÇÒ ÅØ½ºÆ® ºí·Ï (WBP¿¡¼­ "Text_BulletCount" ÀÌ¸§À¸·Î »ý¼º ÇÊ¿ä) */
+	/** BPï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½Îµï¿½ï¿½ï¿½ ï¿½Ø½ï¿½Æ® ï¿½ï¿½ï¿½ï¿½ (WBPï¿½ï¿½ï¿½ï¿½ "Text_BulletCount" ï¿½Ì¸ï¿½ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ ï¿½Ê¿ï¿½) */
 	UPROPERTY(meta = (BindWidget))
 	TObjectPtr<UTextBlock> Text_BulletCount;
 };

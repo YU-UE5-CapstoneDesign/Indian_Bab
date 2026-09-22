@@ -328,10 +328,17 @@ void AMainGameState::UpdateMainRevolverWidgetPhase(bool bIsPlaying)
 	for (TActorIterator<ARevolver> It(GetWorld()); It; ++It)
 	{
 		ARevolver* Revolver = *It;
-		if (Revolver && Revolver->ActorHasTag(FName("MainRevolver")))
+		if (!IsValid(Revolver))
 		{
+			continue;
+		}
+
+		const bool bIsMainRevolver = Revolver->ActorHasTag(FName(TEXT("MainRevolver")));
+		const bool bIsSubRevolver = Revolver->ActorHasTag(FName(TEXT("SubRevolver")));
+		if (bIsMainRevolver || bIsSubRevolver)
+		{
+			// 메인 리볼버 하나와 모든 플레이어의 서브 리볼버를 함께 처리합니다.
 			Revolver->SetWidgetPlayingPhase(bIsPlaying);
-			break;
 		}
 	}
 }

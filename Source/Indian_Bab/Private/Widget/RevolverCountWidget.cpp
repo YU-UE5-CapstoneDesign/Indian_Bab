@@ -9,9 +9,16 @@ void URevolverCountWidget::UpdateCount(int32 CurrentCount, int32 MaxCount)
 	Text_BulletCount->SetText(FText::FromString(CountText));
 }
 
+void URevolverCountWidget::UpdateFoldCount(int32 Count)
+{
+	if (!Text_BulletCount) return;
+
+	Text_BulletCount->SetText(FText::AsNumber(Count));
+}
+
 void URevolverCountWidget::SetPlayingPhase(bool bIsPlaying)
 {
-	// Playing ÆäÀÌÁîÀÏ ¶§¸¸ À§Á¬ ÀüÃ¼¸¦ º¸ÀÌ°Ô ÇÔ
-	// ¼Õ¿¡ ÃÑÀÌ ´Þ·ÁÀÖÀ» ¶§ ÅØ½ºÆ®°¡ º¸ÀÌ¸é ¾î»öÇÏ¹Ç·Î Playing¿¡¼­¸¸ Ç¥½Ã
+	// Playing ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½Ã¼ï¿½ï¿½ ï¿½ï¿½ï¿½Ì°ï¿½ ï¿½ï¿½
+	// ï¿½Õ¿ï¿½ ï¿½ï¿½ï¿½ï¿½ ï¿½Þ·ï¿½ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ ï¿½Ø½ï¿½Æ®ï¿½ï¿½ ï¿½ï¿½ï¿½Ì¸ï¿½ ï¿½ï¿½ï¿½ï¿½Ï¹Ç·ï¿½ Playingï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ Ç¥ï¿½ï¿½
 	SetVisibility(bIsPlaying ? ESlateVisibility::Visible : ESlateVisibility::Hidden);
 }

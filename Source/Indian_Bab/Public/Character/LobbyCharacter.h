@@ -178,8 +178,11 @@ public:
 	void Multicast_PutBackGunMontage(EGunHoldReason Reason);
 
 	// 이 캐릭터 자리에 놓인 리볼버 (SeatActor 착석 시 할당, Replicated)
-	UPROPERTY(Replicated, BlueprintReadOnly, Category = "Weapon")
+	UPROPERTY(ReplicatedUsing = OnRep_DeskRevolver, BlueprintReadOnly, Category = "Weapon")
 	TObjectPtr<ARevolver> DeskRevolver;
+
+	UFUNCTION()
+	void OnRep_DeskRevolver();
 	
 	// 현재 애니메이션에서 손에 붙일 리볼버
 	// Fold일 때는 자리 앞 서브 리볼버, Win일 때는 맵 중앙 메인 리볼버
@@ -234,6 +237,9 @@ public:
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Card")
 	TObjectPtr<UStaticMeshComponent> CardDisplayMesh;
+
+	// 자기 서브 리볼버 카운트 업데이트 함수
+	void UpdateDeskRevolverCount(int32 TriggerCount);
 
 protected:
 	// Called when the game starts or when spawned

@@ -59,6 +59,7 @@ void AMainPlayerState::SetInitSubRevolver()
     BulletArray[RandomIndex] = 1;
     
     TotalTriggerCount = 0;
+    OnRep_TotalTriggerCount();
     SetAliveState(true);
 }
 
