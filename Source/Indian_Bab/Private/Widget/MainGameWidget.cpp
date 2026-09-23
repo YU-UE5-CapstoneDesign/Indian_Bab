@@ -10,11 +10,6 @@
 #include "Game/MainGameState.h"
 #include "PlayerController\MainGamePlayerController.h"
 
-namespace
-{
-	constexpr int32 MaxRaiseBetNum = 7;
-}
-
 void UMainGameWidget::UpdateCenterBetLog(const FString& Message)
 {
 	if (!Txt_BetLog) return;
@@ -147,11 +142,6 @@ void UMainGameWidget::NativeConstruct()
 	{
 		Button_Fold->OnClicked.AddDynamic(this, &UMainGameWidget::OnButtonFold);
 	}
-	if (BetCount)
-	{
-		BetCount->SetText(FText::AsNumber(BetNum));
-		WBP_BetProgress->SetPerCent(-0.125f);
-	}
 	MainGamePC = Cast<AMainGamePlayerController>(GetOwningPlayer());
     if (WBP_TurnInfoWidget)
     {
@@ -177,24 +167,18 @@ void UMainGameWidget::MinusButtonClicked()
 		BetNum,
 		*GetNameSafe(MainGamePC));
 
-	if (BetCount)
-	{
-		BetCount->SetText(FText::AsNumber(BetNum));
-	}
-
-	if (WBP_BetProgress)
-	{
-		WBP_BetProgress->SetPerCent(0.125f);
-	}
+	RefreshRaiseSelection();
 }
 
 void UMainGameWidget::PlusButtonClicked()
 {
     if (!CanUseBettingButtons()) return;
-	if (BetNum >= MaxRaiseBetNum)
+	const int32 MaxRaiseCount = GetMaxRaiseCount();
+	if (BetNum >= MaxRaiseCount)
 	{
-		UE_LOG(LogTemp, Warning, TEXT("[VR UI] MainGameWidget clicked: Plus blocked BetNum=%d OwnerPC=%s"),
+		UE_LOG(LogTemp, Warning, TEXT("[VR UI] MainGameWidget clicked: Plus blocked BetNum=%d MaxRaiseCount=%d OwnerPC=%s"),
 			BetNum,
+			MaxRaiseCount,
 			*GetNameSafe(MainGamePC));
 		return;
 	}
@@ -204,22 +188,7 @@ void UMainGameWidget::PlusButtonClicked()
 		BetNum,
 		*GetNameSafe(MainGamePC));
 
-	if (BetCount)
-	{
-		BetCount->SetText(FText::AsNumber(BetNum));
-	}
-
-	if (WBP_BetProgress)
-	{
-		if (BetNum == MaxRaiseBetNum)
-		{
-			WBP_BetProgress->Fill();
-		}
-		else
-		{
-			WBP_BetProgress->SetPerCent(-0.125f);
-		}
-	}
+	RefreshRaiseSelection();
 }
 
 void UMainGameWidget::OnButtonRaise()
@@ -232,10 +201,12 @@ void UMainGameWidget::OnButtonRaise()
 		return;
 	}
 
-	if (BetNum < 1 || BetNum > MaxRaiseBetNum)
+	const int32 MaxRaiseCount = GetMaxRaiseCount();
+	if (BetNum < 1 || BetNum > MaxRaiseCount)
 	{
-		UE_LOG(LogTemp, Warning, TEXT("[VR UI] MainGameWidget clicked: Raise blocked BetNum=%d OwnerPC=%s"),
+		UE_LOG(LogTemp, Warning, TEXT("[VR UI] MainGameWidget clicked: Raise blocked BetNum=%d MaxRaiseCount=%d OwnerPC=%s"),
 			BetNum,
+			MaxRaiseCount,
 			*GetNameSafe(MainGamePC));
 		return;
 	}
@@ -382,16 +353,52 @@ bool UMainGameWidget::CanUseBettingButtons() const
     return IsOwningPlayerTurn() && GS && !GS->bTurnActionInProgress;
 }
 
+// 메인 리볼버의 빈 탄창 수만큼만 레이즈할 수 있습니다.
+int32 UMainGameWidget::GetMaxRaiseCount() const
+{
+    const AMainGameState* GS = GetWorld() ? GetWorld()->GetGameState<AMainGameState>() : nullptr;
+    return GS ? FMath::Max(0, GS->MainRevolverChamberCount - GS->CurrentBulletCount) : 0;
+}
+
+void UMainGameWidget::RefreshRaiseSelection()
+{
+    const int32 MaxRaiseCount = GetMaxRaiseCount();
+    BetNum = MaxRaiseCount > 0 ? FMath::Clamp(BetNum, 1, MaxRaiseCount) : 0;
+
+    if (BetCount)
+    {
+        BetCount->SetText(FText::AsNumber(BetNum));
+    }
+
+    if (WBP_BetProgress)
+    {
+        WBP_BetProgress->Value = MaxRaiseCount > 0
+            ? static_cast<float>(BetNum) / static_cast<float>(MaxRaiseCount)
+            : 0.0f;
+    }
+}
+
 // 활성 상태가 바뀐 버튼만 갱신하여 기존 비활성 스타일을 적용합니다.
 void UMainGameWidget::RefreshBettingButtons()
 {
     // 행동 잠금과 별개로 자기 턴인 동안 턴 문구를 표시합니다.
     const bool bEnabled = CanUseBettingButtons();
-    for (UButton* Button : {Button_Raise.Get(), Button_CheckCall.Get(), Button_Fold.Get(), Plus_Button.Get(), Minus_Button.Get()})
+    RefreshRaiseSelection();
+
+    const int32 MaxRaiseCount = GetMaxRaiseCount();
+    const auto SetButtonEnabled = [](UButton* Button, bool bShouldEnable)
     {
-        if (Button && Button->GetIsEnabled() != bEnabled)
-            Button->SetIsEnabled(bEnabled);
-    }
+        if (Button && Button->GetIsEnabled() != bShouldEnable)
+        {
+            Button->SetIsEnabled(bShouldEnable);
+        }
+    };
+
+    SetButtonEnabled(Button_Raise.Get(), bEnabled && MaxRaiseCount > 0);
+    SetButtonEnabled(Button_CheckCall.Get(), bEnabled);
+    SetButtonEnabled(Button_Fold.Get(), bEnabled);
+    SetButtonEnabled(Plus_Button.Get(), bEnabled && BetNum < MaxRaiseCount);
+    SetButtonEnabled(Minus_Button.Get(), bEnabled && BetNum > 1);
 }
 
 // 별도 알림이 없는 행동 잠금과 늦게 복제된 플레이어 상태도 반영합니다.

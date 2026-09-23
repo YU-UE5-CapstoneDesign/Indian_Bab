@@ -9,11 +9,6 @@
 #include "Blueprint/WidgetBlueprintLibrary.h"
 #include "Widget/MainGameWidget.h"
 
-namespace
-{
-	constexpr int32 GameStateMaxRaiseCount = 7;
-}
-
 AMainGameState::AMainGameState()
 {
 	CurrentGamePhase = EGamePhase::Lobby;
@@ -98,7 +93,8 @@ void AMainGameState::ChangeCurrentBetInfo(EBetAction NewAction, int32 RaiseCount
 
 	if(NewAction == EBetAction::Raise)
 	{
-		if(RaiseCount < 1 || RaiseCount > GameStateMaxRaiseCount || CurrentBulletCount + RaiseCount > MainRevolverChamberCount) return;
+		const int32 MaxRaiseCount = FMath::Max(0, MainRevolverChamberCount - CurrentBulletCount);
+		if(RaiseCount < 1 || RaiseCount > MaxRaiseCount) return;
 		CurrentBulletCount += RaiseCount;
 
 		OnRep_CurrentBulletCount();

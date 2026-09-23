@@ -37,6 +37,8 @@ private:
     // PC와 VR 모두 같은 턴 조건으로 베팅 버튼을 갱신합니다.
     bool IsOwningPlayerTurn() const;
     bool CanUseBettingButtons() const;
+    int32 GetMaxRaiseCount() const;
+    void RefreshRaiseSelection();
     void RefreshBettingButtons();
 
     bool bPCReadyMode = false;
