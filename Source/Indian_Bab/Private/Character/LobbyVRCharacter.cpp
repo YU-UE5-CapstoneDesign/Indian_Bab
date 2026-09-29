@@ -59,6 +59,20 @@ ALobbyVRCharacter::ALobbyVRCharacter()
 		CameraComponent->bUsePawnControlRotation = false;
 		CameraComponent->bLockToHmd = false;
 	}
+	
+	MetaHumanBodyAnimation = CreateDefaultSubobject<USkeletalMeshComponent>(TEXT("AnimationBody"));
+	MetaHumanBodyAnimation->SetupAttachment(GetMesh());
+	MetaHumanBodyAnimation->SetOwnerNoSee(true);
+
+	MetaHumanTorsoAnimation = CreateDefaultSubobject<USkeletalMeshComponent>(TEXT("AnimationTorso"));
+	MetaHumanTorsoAnimation->SetupAttachment(MetaHumanBodyAnimation);
+	MetaHumanTorsoAnimation->SetOwnerNoSee(true);
+	MetaHumanTorsoAnimation->SetLeaderPoseComponent(MetaHumanBodyAnimation);
+
+	MetaHumanFaceAnimation = CreateDefaultSubobject<USkeletalMeshComponent>(TEXT("AnimationFace"));
+	MetaHumanFaceAnimation->SetupAttachment(MetaHumanBodyAnimation);
+	MetaHumanFaceAnimation->SetOwnerNoSee(true);
+	MetaHumanFaceAnimation->SetLeaderPoseComponent(MetaHumanBodyAnimation);
 
 	MotionControllerRightGrip = CreateDefaultSubobject<UMotionControllerComponent>(TEXT("MotionControllerRightGrip"));
 	MotionControllerRightGrip->SetupAttachment(VROrigin);
@@ -1069,4 +1083,111 @@ void ALobbyVRCharacter::AttachMainRevolverToRightGrip()
 bool ALobbyVRCharacter::GetMainShotTrace(float TraceDistance, FVector& OutStart, FVector& OutEnd) const
 {
     return GetRightHandShotTrace(OutStart, OutEnd);
+}
+
+void ALobbyVRCharacter::PlayGrabGunMontage(EGunHoldReason Reason)
+{
+	GunHoldReason = Reason;
+
+	UAnimInstance* AnimInstance = nullptr;
+
+	// Fold일 때만 애니메이션용 Mesh로 전환
+	if (Reason == EGunHoldReason::Fold)
+	{
+		TArray<USkeletalMeshComponent*> SkeletalMeshes;
+		GetComponents<USkeletalMeshComponent>(SkeletalMeshes);
+
+		for (USkeletalMeshComponent* Component : SkeletalMeshes)
+		{
+			if (Component)
+			{
+				Component->SetVisibility(false);
+			}
+		}
+
+		if (MetaHumanBodyAnimation)
+		{
+			MetaHumanBodyAnimation->SetVisibility(true);
+			AnimInstance = MetaHumanBodyAnimation->GetAnimInstance();
+		}
+
+		if (MetaHumanTorsoAnimation)
+		{
+			MetaHumanTorsoAnimation->SetVisibility(true);
+		}
+
+		if (MetaHumanFaceAnimation)
+		{
+			MetaHumanFaceAnimation->SetVisibility(true);
+		}
+	}
+	else
+	{
+		AnimInstance = GetMesh()->GetAnimInstance();
+	}
+
+	if (!AnimInstance)
+	{
+		if (HasAuthority())
+		{
+			OnGrabGunMontageEnded(nullptr, false);
+		}
+		return;
+	}
+
+	UAnimMontage* MontageToPlay = nullptr;
+
+	if (Reason == EGunHoldReason::Fold)
+	{
+		MontageToPlay = AimMyselfMontage;
+	}
+	else if (Reason == EGunHoldReason::Win)
+	{
+		MontageToPlay = WinAimMontage;
+	}
+
+	if (MontageToPlay && AnimInstance->Montage_Play(MontageToPlay, 1.0f) > 0.0f)
+	{
+		FOnMontageEnded EndDelegate;
+
+		if (Reason == EGunHoldReason::Fold)
+		{
+			EndDelegate.BindUObject(this,&ALobbyVRCharacter::OnAimMyselfMontageEnded);
+		}
+		else
+		{
+			EndDelegate.BindUObject(this,&ALobbyVRCharacter::OnGrabGunMontageEnded);
+		}
+		AnimInstance->Montage_SetEndDelegate(EndDelegate,MontageToPlay);
+
+		return;
+	}
+
+	if (HasAuthority())
+	{
+		OnGrabGunMontageEnded(nullptr, false);
+	}
+}
+
+
+void ALobbyVRCharacter::OnAimMyselfMontageEnded(UAnimMontage* Montage, bool bInterrupted)
+{
+	if (Montage != AimMyselfMontage)
+	{
+		return;
+	}
+
+	TArray<USkeletalMeshComponent*> SkeletalMeshes;
+	GetComponents<USkeletalMeshComponent>(SkeletalMeshes);
+
+	for (USkeletalMeshComponent* Component : SkeletalMeshes)
+	{
+		if (Component)
+		{
+			Component->SetVisibility(true);
+		}
+	}
+	MetaHumanBodyAnimation->SetVisibility(false);
+	MetaHumanTorsoAnimation->SetVisibility(false);
+	MetaHumanFaceAnimation->SetVisibility(false);
 }

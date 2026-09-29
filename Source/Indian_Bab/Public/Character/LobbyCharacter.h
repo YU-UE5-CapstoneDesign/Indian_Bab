@@ -21,7 +21,7 @@ class INDIAN_BAB_API ALobbyCharacter : public ACharacter
 
 protected:
 	// 폴드와 PC 승리 시 기존 총 잡기 몽타주 처리를 공유합니다.
-	void PlayGrabGunMontage(EGunHoldReason Reason);
+	virtual void PlayGrabGunMontage(EGunHoldReason Reason);
 
 	// 총 반환과 PC 격발 종료에서 손의 총 메시 정리를 공유합니다.
 	void ClearHeldRevolverMeshes();
@@ -172,6 +172,7 @@ public:
 	// 총 집어들기 몽타주 재생 (Fold/Win 공통)
 	UFUNCTION(NetMulticast, Reliable)
 	void Multicast_PlayGrabGunMontage(EGunHoldReason Reason);
+
 
 	// 총 원래 위치로 보내는 몽타주 재생 (Fold/Win 공통)
 	UFUNCTION(NetMulticast, Reliable)
