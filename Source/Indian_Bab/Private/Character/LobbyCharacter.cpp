@@ -28,7 +28,8 @@ ALobbyCharacter::ALobbyCharacter()
 	PrimaryActorTick.bCanEverTick = true;
 
 	bIsSitting = false; // 기본값은 서 있는 상태
-
+	
+	
 	// 1인칭 메타휴먼 바디 생성 및 설정
 	FirstPersonMetaHumanBody = CreateDefaultSubobject<USkeletalMeshComponent>(TEXT("First Person MetaHuman Body"));
 	FirstPersonMetaHumanBody->SetupAttachment(GetMesh());
@@ -738,7 +739,7 @@ void ALobbyCharacter::BeginManualMainRevolverPhase()
 
 // 메인 총의 사용 상태를 정리하고 원래 책상 위치로 돌려놓습니다.
 void ALobbyCharacter::ReturnMainRevolverToTableImmediately()
-{
+{ 
 
 	ClearHeldRevolverMeshes();
 

@@ -75,7 +75,17 @@ public:
 	void SetActiveVRUI(EVRActiveUI ActiveUI);
 
 	virtual void OnRep_IsSitting() override;
+	
+	
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components", meta = (AllowPrivateAccess = "true"))
+	USkeletalMeshComponent* MetaHumanBodyAnimation;
 
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components", meta = (AllowPrivateAccess = "true"))
+	USkeletalMeshComponent* MetaHumanTorsoAnimation;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components", meta = (AllowPrivateAccess = "true"))
+	USkeletalMeshComponent* MetaHumanFaceAnimation;
+	
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "VR")
 	TObjectPtr<USceneComponent> VROrigin;
 
@@ -151,6 +161,7 @@ public:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "VR|Pointer")
 	bool bLogVRPointerHits = false;
 
+
 	UPROPERTY(ReplicatedUsing=OnRep_ArmTransforms, BlueprintReadOnly, Category = "MotionController")
 	FTransform LeftArm;
 
@@ -181,7 +192,7 @@ private:
 	void Server_GrabMainRevolver();
 
 	void AttachMainRevolverToRightGrip();
-
+	
 	void ConfigureLocalVRTracking();
 	void ApplyReplicatedArmTransforms();
 	void ConfigureVRSeatedState();
@@ -195,6 +206,8 @@ private:
 	void UpdateVRPointers();
 	void UpdateLaserPointer(const UMotionControllerComponent* AimController, const TCHAR* PointerName) const;
 	void DrawSeatDebugCapsule() const;
+	virtual void PlayGrabGunMontage(EGunHoldReason Reason) override;
+	void OnAimMyselfMontageEnded(UAnimMontage* Montage, bool bInterrupted);
 
 	FTimerHandle ReadyWidgetDelayTimerHandle;
 
