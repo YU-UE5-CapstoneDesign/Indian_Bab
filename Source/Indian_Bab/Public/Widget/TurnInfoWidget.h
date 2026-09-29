@@ -6,11 +6,15 @@
 
 class UTextBlock;
 class AMainGameState;
+class APlayerController;
 
 UCLASS()
 class INDIAN_BAB_API UTurnInfoWidget : public UUserWidget
 {
 	GENERATED_BODY()
+
+public:
+	void InitializeForPlayer(APlayerController* InOwningPlayer);
 
 protected:
 	virtual void NativeConstruct() override;

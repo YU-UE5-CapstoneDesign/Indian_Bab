@@ -173,6 +173,8 @@ void ALobbyCharacter::BindPlayerStateDelegates()
 	PS->OnCardChanged.RemoveAll(this);
 	PS->OnCardChanged.AddUObject(this, &ALobbyCharacter::UpdateCardWidget);
 	PS->OnCardChanged.AddUObject(this, &ALobbyCharacter::UpdateCardMesh);
+	PS->OnTriggerCountChanged.RemoveAll(this);
+	PS->OnTriggerCountChanged.AddUObject(this, &ALobbyCharacter::UpdateDeskRevolverCount);
 
 	// 플레이어 상태 변화 구독 (생존 상태)
 	PS->OnAliveStateChanged.RemoveAll(this);
@@ -182,6 +184,11 @@ void ALobbyCharacter::BindPlayerStateDelegates()
 	UpdateCardWidget();
 	UpdateCardMesh();
 	UpdatePlayerNameColor();
+
+	if (IsValid(DeskRevolver))
+	{
+		UpdateDeskRevolverCount(PS->TotalTriggerCount);
+	}
 
 	// 게임 스테이트의 턴 변경 델리게이트 구독
 	if (UWorld* World = GetWorld())
@@ -686,6 +693,18 @@ void ALobbyCharacter::OnRep_PlayerState()
 	BindPlayerStateDelegates();
 }
 
+void ALobbyCharacter::OnRep_DeskRevolver()
+{
+	AMainPlayerState* PS = GetPlayerState<AMainPlayerState>();
+	if (!PS || !IsValid(DeskRevolver))
+	{
+		return;
+	}
+
+	// PlayerState와 DeskRevolver의 복제 순서와 무관하게 최신 값을 다시 적용합니다.
+	UpdateDeskRevolverCount(PS->TotalTriggerCount);
+}
+
 // 카메라 적용은 장치별 자식 클래스에서 구현합니다.
 void ALobbyCharacter::OnSeatedCameraReady(const FRotator& SeatRotation)
 {
@@ -788,4 +807,15 @@ void ALobbyCharacter::InitSeatedAtSeat(ASeatActor* TargetSeat)
 bool ALobbyCharacter::GetMainShotTrace(float TraceDistance, FVector& OutStart, FVector& OutEnd) const
 {
     return false;
+}
+
+// 자기 서브 리볼버 카운트 업데이트 함수
+void ALobbyCharacter::UpdateDeskRevolverCount(int32 TriggerCount)
+{
+	if (!IsValid(DeskRevolver))
+	{
+		return;
+	}
+
+	DeskRevolver->UpdateFoldCountWidget(TriggerCount);
 }

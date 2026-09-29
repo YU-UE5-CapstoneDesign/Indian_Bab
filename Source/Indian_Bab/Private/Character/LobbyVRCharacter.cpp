@@ -127,7 +127,7 @@ void ALobbyVRCharacter::BeginPlay()
 	ConfigureLocalVRTracking();
 	ConfigureVRSeatedState();
 	ConfigureWidgetInteraction();
-	InitializeTurnInfoWidgetComponent();
+	ApplyVRWidgetComponentState(TurnInfoWidgetComponent, false);
 }
 
 
@@ -136,7 +136,6 @@ void ALobbyVRCharacter::PossessedBy(AController* NewController)
 	Super::PossessedBy(NewController);
 	ConfigureLocalVRTracking();
 	ConfigureWidgetInteraction();
-	InitializeTurnInfoWidgetComponent();
 }
 
 void ALobbyVRCharacter::OnRep_PlayerState()
@@ -144,7 +143,6 @@ void ALobbyVRCharacter::OnRep_PlayerState()
 	Super::OnRep_PlayerState();
 	ConfigureLocalVRTracking();
 	ConfigureWidgetInteraction();
-	InitializeTurnInfoWidgetComponent();
 }
 
 void ALobbyVRCharacter::PawnClientRestart()
@@ -152,7 +150,6 @@ void ALobbyVRCharacter::PawnClientRestart()
 	Super::PawnClientRestart();
 	ConfigureLocalVRTracking();
 	ConfigureWidgetInteraction();
-	InitializeTurnInfoWidgetComponent();
 }
 
 void ALobbyVRCharacter::Tick(float DeltaTime)
@@ -816,6 +813,18 @@ void ALobbyVRCharacter::ShowReadyWidget()
 
 	ConfigureWidgetInteraction();
 
+	// Blueprint component overrides must not hide or collapse the local VR UI.
+	ReadyWidgetComponent->SetRelativeLocation(ReadyWidgetRelativeLocation);
+	ReadyWidgetComponent->SetRelativeRotation(ReadyWidgetRelativeRotation);
+	ReadyWidgetComponent->SetRelativeScale3D(FVector(ReadyWidgetWorldScale));
+	ReadyWidgetComponent->SetOwnerNoSee(false);
+	ReadyWidgetComponent->SetOnlyOwnerSee(false);
+	ReadyWidgetComponent->SetRenderInMainPass(true);
+	ReadyWidgetComponent->SetDrawAtDesiredSize(false);
+	ReadyWidgetComponent->SetDrawSize(ReadyWidgetDrawSize);
+	ReadyWidgetComponent->SetPivot(FVector2D(0.5f, 0.5f));
+	ReadyWidgetComponent->SetTickWhenOffscreen(true);
+
 	if (ReadyWidgetClass)
 	{
 		ReadyWidgetComponent->SetWidgetClass(ReadyWidgetClass);
@@ -834,12 +843,18 @@ void ALobbyVRCharacter::ShowReadyWidget()
 	}
 
 	SetActiveVRUI(EVRActiveUI::Ready);
+	ReadyWidgetComponent->RequestRedraw();
+	ReadyWidgetComponent->MarkRenderStateDirty();
 
-	UE_LOG(LogTemp, Warning, TEXT("[VR UI] ReadyWidget shown. Local=%s Collision=%d WidgetClass=%s WidgetObject=%s"),
+	UE_LOG(LogTemp, Warning, TEXT("[VR UI] ReadyWidget shown. Local=%s Collision=%d WidgetClass=%s WidgetObject=%s RelativeLocation=%s RelativeRotation=%s RelativeScale=%s DrawSize=%s"),
 		IsLocallyControlled() ? TEXT("true") : TEXT("false"),
 		static_cast<int32>(ReadyWidgetComponent->GetCollisionEnabled()),
 		*GetNameSafe(ReadyWidgetComponent->GetWidgetClass()),
-		*GetNameSafe(ReadyWidgetComponent->GetUserWidgetObject()));
+		*GetNameSafe(ReadyWidgetComponent->GetUserWidgetObject()),
+		*ReadyWidgetComponent->GetRelativeLocation().ToString(),
+		*ReadyWidgetComponent->GetRelativeRotation().ToString(),
+		*ReadyWidgetComponent->GetRelativeScale3D().ToString(),
+		*ReadyWidgetComponent->GetDrawSize().ToString());
 }
 
 void ALobbyVRCharacter::HideReadyWidget()
@@ -862,7 +877,7 @@ void ALobbyVRCharacter::ShowMainGameWidget()
 	if (!IsLocallyControlled()) return;
 
 	ConfigureWidgetInteraction();
-	InitializeTurnInfoWidgetComponent();
+	ApplyVRWidgetComponentState(TurnInfoWidgetComponent, false);
 	InitializeMainGameWidgetComponents();
 	SetActiveVRUI(EVRActiveUI::InGame);
 }

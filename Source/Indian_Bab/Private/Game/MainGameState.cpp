@@ -9,11 +9,6 @@
 #include "Blueprint/WidgetBlueprintLibrary.h"
 #include "Widget/MainGameWidget.h"
 
-namespace
-{
-	constexpr int32 GameStateMaxRaiseCount = 7;
-}
-
 AMainGameState::AMainGameState()
 {
 	CurrentGamePhase = EGamePhase::Lobby;
@@ -98,7 +93,8 @@ void AMainGameState::ChangeCurrentBetInfo(EBetAction NewAction, int32 RaiseCount
 
 	if(NewAction == EBetAction::Raise)
 	{
-		if(RaiseCount < 1 || RaiseCount > GameStateMaxRaiseCount || CurrentBulletCount + RaiseCount > MainRevolverChamberCount) return;
+		const int32 MaxRaiseCount = FMath::Max(0, MainRevolverChamberCount - CurrentBulletCount);
+		if(RaiseCount < 1 || RaiseCount > MaxRaiseCount) return;
 		CurrentBulletCount += RaiseCount;
 
 		OnRep_CurrentBulletCount();
@@ -328,11 +324,27 @@ void AMainGameState::UpdateMainRevolverWidgetPhase(bool bIsPlaying)
 	for (TActorIterator<ARevolver> It(GetWorld()); It; ++It)
 	{
 		ARevolver* Revolver = *It;
-		if (Revolver && Revolver->ActorHasTag(FName("MainRevolver")))
-		{
-			Revolver->SetWidgetPlayingPhase(bIsPlaying);
-			break;
-		}
+		if (!IsValid(Revolver)) continue;
+
+		if (Revolver->ActorHasTag(TEXT("MainRevolver")))
+        {
+            Revolver->SetWidgetPlayingPhase(bIsPlaying);
+            continue;
+        }
+
+		if (Revolver->ActorHasTag(TEXT("SubRevolver")))
+        {
+            for (TActorIterator<ASeatActor> SeatIt(GetWorld()); SeatIt; ++SeatIt)
+			{
+				ASeatActor* Seat = *SeatIt;
+
+				if (IsValid(Seat) && Seat->DeskRevolver == Revolver && IsValid(Seat->GetOccupant()))
+				{
+					Revolver->SetWidgetPlayingPhase(bIsPlaying);
+					break;
+				}
+			}
+        }
 	}
 }
 

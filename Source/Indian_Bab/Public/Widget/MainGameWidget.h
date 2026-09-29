@@ -10,6 +10,7 @@ class UDeckLeftWidget;
 class UTextBlock;
 class UEditableTextBox;
 class UBetProgressWidget;
+class UTurnInfoWidget;
 class AMainGamePlayerController;
 class AMainPlayerState;
 
@@ -28,7 +29,7 @@ private:
 
     // 자기 턴에만 표시하는 기존 WBP 텍스트입니다.
     UPROPERTY(meta = (BindWidgetOptional))
-    TObjectPtr<UTextBlock> Text_Turn;
+    TObjectPtr<UTurnInfoWidget> WBP_TurnInfoWidget;
 
     UFUNCTION()
     void OnReadyClicked();
@@ -36,6 +37,8 @@ private:
     // PC와 VR 모두 같은 턴 조건으로 베팅 버튼을 갱신합니다.
     bool IsOwningPlayerTurn() const;
     bool CanUseBettingButtons() const;
+    int32 GetMaxRaiseCount() const;
+    void RefreshRaiseSelection();
     void RefreshBettingButtons();
 
     bool bPCReadyMode = false;
