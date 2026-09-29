@@ -1,71 +1,119 @@
 #include "Widget/ReadyWidget.h"
-
-#include "Character/LobbyVRCharacter.h"
 #include "Components/Button.h"
+#include "Components/ButtonSlot.h"
+#include "Components/CanvasPanelSlot.h"
 #include "Components/TextBlock.h"
-#include "Kismet/GameplayStatics.h"
+#include "Game/MainGameState.h"
 #include "PlayerController/MainGamePlayerController.h"
 
 void UReadyWidget::NativeConstruct()
 {
-	Super::NativeConstruct();
+    Super::NativeConstruct();
+    SetVisibility(ESlateVisibility::SelfHitTestInvisible);
+    if (Button_Ready)
+    {
+        if (UCanvasPanelSlot* ButtonCanvasSlot = Cast<UCanvasPanelSlot>(Button_Ready->Slot))
+        {
+            ButtonCanvasSlot->SetAnchors(FAnchors(0.5f, 0.5f));
+            ButtonCanvasSlot->SetAlignment(FVector2D(0.5f, 0.5f));
+            ButtonCanvasSlot->SetPosition(FVector2D(0.0f, 250.0f));
+            ButtonCanvasSlot->SetSize(FVector2D(600.0f, 200.0f));
+            ButtonCanvasSlot->SetAutoSize(false);
+            ButtonCanvasSlot->SetZOrder(0);
+        }
 
-	bReadySubmitted = false;
-	SetVisibility(ESlateVisibility::Visible);
+        Button_Ready->OnClicked.RemoveAll(this);
+        Button_Ready->OnClicked.AddDynamic(this, &UReadyWidget::OnReadyButtonClicked);
+    }
 
-	if (Button_Ready)
-	{
-		Button_Ready->SetIsEnabled(true);
-		Button_Ready->SetVisibility(ESlateVisibility::Visible);
-		Button_Ready->OnClicked.RemoveAll(this);
-		Button_Ready->OnClicked.AddDynamic(this, &UReadyWidget::OnReadyButtonClicked);
-	}
+    if (Text_ReadyPlayer)
+    {
+        if (UCanvasPanelSlot* CountCanvasSlot = Cast<UCanvasPanelSlot>(Text_ReadyPlayer->Slot))
+        {
+            CountCanvasSlot->SetAnchors(FAnchors(0.5f, 0.5f));
+            CountCanvasSlot->SetAlignment(FVector2D(0.5f, 0.5f));
+            CountCanvasSlot->SetPosition(FVector2D(0.0f, 195.0f));
+            CountCanvasSlot->SetSize(FVector2D(300.0f, 80.0f));
+            CountCanvasSlot->SetAutoSize(false);
+            CountCanvasSlot->SetZOrder(1);
+        }
+        Text_ReadyPlayer->SetJustification(ETextJustify::Center);
+        Text_ReadyPlayer->SetVisibility(ESlateVisibility::HitTestInvisible);
+    }
 
-	if (Text_ReadyState)
-	{
-		Text_ReadyState->SetVisibility(ESlateVisibility::Visible);
-		Text_ReadyState->SetText(FText::FromString(TEXT("Ready")));
-	}
+    if (Text_ReadyState)
+    {
+        if (UButtonSlot* ReadyTextSlot = Cast<UButtonSlot>(Text_ReadyState->Slot))
+        {
+            ReadyTextSlot->SetHorizontalAlignment(HAlign_Center);
+            ReadyTextSlot->SetVerticalAlignment(VAlign_Center);
+            ReadyTextSlot->SetPadding(FMargin(0.0f));
+        }
+        Text_ReadyState->SetJustification(ETextJustify::Center);
+    }
+
+    RefreshReadyState();
+}
+
+void UReadyWidget::NativeTick(const FGeometry& MyGeometry, float InDeltaTime)
+{
+    Super::NativeTick(MyGeometry, InDeltaTime);
+    RefreshReadyState();
+}
+
+void UReadyWidget::NativeDestruct()
+{
+    if (Button_Ready) Button_Ready->OnClicked.RemoveAll(this);
+    Super::NativeDestruct();
+}
+
+void UReadyWidget::RefreshReadyState()
+{
+    const AMainGameState* GS = GetWorld() ? GetWorld()->GetGameState<AMainGameState>() : nullptr;
+    const APlayerController* PC = GetOwningPlayer();
+    const APlayerState* PS = PC ? PC->PlayerState : nullptr;
+    const bool bLobby = GS && GS->CurrentGamePhase == EGamePhase::Lobby;
+    const bool bHost = GS && PS && GS->LobbyReadyStatus.HostPlayerId == PS->GetPlayerId();
+    const bool bReady = GS && PS && GS->LobbyReadyStatus.ReadyPlayerIds.Contains(PS->GetPlayerId());
+
+    if (Text_ReadyPlayer)
+    {
+        const FText Count = FText::FromString(FString::Printf(TEXT("(%d/%d)"),
+            GS ? GS->LobbyReadyStatus.ReadyPlayerIds.Num() : 0,
+            GS ? GS->LobbyReadyStatus.ConnectedPlayerCount : 0));
+        if (!Text_ReadyPlayer->GetText().EqualTo(Count)) Text_ReadyPlayer->SetText(Count);
+    }
+    if (Text_ReadyState)
+    {
+        const FText Label = FText::FromString(bHost ? TEXT("Start") : TEXT("Ready"));
+        if (!Text_ReadyState->GetText().EqualTo(Label)) Text_ReadyState->SetText(Label);
+    }
+    if (Button_Ready)
+    {
+        const bool bEnabled = bLobby && PC && PC->IsLocalController() && PS
+            && GS->LobbyReadyStatus.HostPlayerId != INDEX_NONE
+            && (bHost ? GS->LobbyReadyStatus.bCanStart : !bReady);
+        if (Button_Ready->GetIsEnabled() != bEnabled) Button_Ready->SetIsEnabled(bEnabled);
+    }
 }
 
 void UReadyWidget::OnReadyButtonClicked()
 {
-	ConfirmReady();
+    ConfirmReady();
 }
 
 void UReadyWidget::ConfirmReady()
 {
-	if (bReadySubmitted)
-	{
-		return;
-	}
+    // VR direct clicks must check the same replicated readiness as desktop clicks.
+    RefreshReadyState();
+    if (!Button_Ready || !Button_Ready->GetIsEnabled()) return;
+    AMainGamePlayerController* PC = Cast<AMainGamePlayerController>(GetOwningPlayer());
+    const AMainGameState* GS = GetWorld() ? GetWorld()->GetGameState<AMainGameState>() : nullptr;
+    if (!PC || !PC->IsLocalController() || !PC->PlayerState || !GS) return;
 
-	UE_LOG(LogTemp, Warning, TEXT("[ReadyWidget] Ready button clicked"));
-
-	AMainGamePlayerController* PC = Cast<AMainGamePlayerController>(GetOwningPlayer());
-	if (!PC)
-	{
-		UE_LOG(LogTemp, Error, TEXT("[ReadyWidget] OwningPlayer is null or not AMainGamePlayerController"));
-		return;
-	}
-
-	UE_LOG(LogTemp, Warning, TEXT("[ReadyWidget] OwningPlayer=%s"), *GetNameSafe(PC));
-
-	bReadySubmitted = true;
-	PC->Server_RequestReady();
-
-	if (Button_Ready)
-	{
-		Button_Ready->SetIsEnabled(false);
-	}
-
-	if (Text_ReadyState)
-	{
-		Text_ReadyState->SetText(FText::FromString(TEXT("Ready Complete")));
-	}
-
-	if (ALobbyVRCharacter* VRCharacter = Cast<ALobbyVRCharacter>(PC->GetPawn()))
-	{
-		VRCharacter->HideReadyWidget();
-	}
+    if (GS->LobbyReadyStatus.HostPlayerId == PC->PlayerState->GetPlayerId())
+        PC->Server_RequestStart();
+    else
+        PC->Server_RequestReady();
+    // Keep the widget open to display readiness and host changes.
 }

@@ -10,6 +10,7 @@ class UDeckLeftWidget;
 class UInputMappingContext;
 class UInputAction;
 class UGameResultWidget;
+class UReadyWidget;
 
 UCLASS()
 class INDIAN_BAB_API AMainGamePlayerController : public APlayerController
@@ -74,6 +75,15 @@ public:
 
     UFUNCTION(Server, Reliable)
     void Server_RequestReady();
+
+    UFUNCTION(Server, Reliable)
+    void Server_RequestStart();
+
+    UPROPERTY(EditDefaultsOnly, Category = "UI|Ready")
+    TSubclassOf<UReadyWidget> PCReadyWidgetClass;
+
+    UPROPERTY(Transient)
+    TObjectPtr<UReadyWidget> PCReadyWidgetInstance;
 
     int GetPlayerIdSafe();
 

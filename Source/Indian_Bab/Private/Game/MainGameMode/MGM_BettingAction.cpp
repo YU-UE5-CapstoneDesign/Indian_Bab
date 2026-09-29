@@ -11,11 +11,6 @@
 
 #if WITH_SERVER_CODE
 
-namespace
-{
-	constexpr int32 BettingActionMaxRaiseCount = 7;
-}
-
 void AMainGameMode::HandleBetAction(AMainGamePlayerController* RequestPC, EBetAction Action, int32 RaiseCount)
 {
     if (!HasAuthority()) return;
@@ -30,10 +25,14 @@ void AMainGameMode::HandleBetAction(AMainGamePlayerController* RequestPC, EBetAc
     int32 PlayerId = RequestPC->GetPlayerIdSafe();
 	if (GS -> CurrentTurnPlayerId != PlayerId) return;
 
-	// Raise 불가능하면 아예 막고 종료
-    if (Action == EBetAction::Raise && (RaiseCount < 1 || RaiseCount > BettingActionMaxRaiseCount || GS->CurrentBulletCount + RaiseCount > GS->MainRevolverChamberCount))
-    {
-		UE_LOG(LogTemp, Warning, TEXT("[GM] Raise blocked: RaiseCount=%d CurrentBulletCount=%d"), RaiseCount, GS->CurrentBulletCount);
+	// 메인 리볼버의 남은 탄창 수를 넘는 Raise는 서버에서도 거부합니다.
+	const int32 MaxRaiseCount = FMath::Max(0, GS->MainRevolverChamberCount - GS->CurrentBulletCount);
+    if (Action == EBetAction::Raise && (RaiseCount < 1 || RaiseCount > MaxRaiseCount))
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[GM] Raise blocked: RaiseCount=%d MaxRaiseCount=%d CurrentBulletCount=%d"),
+			RaiseCount,
+			MaxRaiseCount,
+			GS->CurrentBulletCount);
         //TODO 추후에 텍스트로 Raise 불가라고 뜨게
         return;
     }
@@ -338,6 +337,7 @@ void AMainGameMode::HandlePutBackGunMontageFinished(ALobbyCharacter* Character, 
 
 	if (Reason == EGunHoldReason::Win)
 	{
+		Character->ReturnMainRevolverToTableImmediately();
 		bMainRevolverPutBackInProgress = false;
 		FinishMainShotPhase();
 		return;
@@ -487,9 +487,8 @@ void AMainGameMode::StartMainRevolverPutBack()
 
 	UE_LOG(LogTemp, Warning, TEXT("[GM] Start Main Revolver PutBack"));
 
-	WinnerCharacter->ReturnMainRevolverToTableImmediately();
-	bMainRevolverPutBackInProgress = false;
-	FinishMainShotPhase();
+	// 메인 리볼버를 즉시 반환하지 않고 WinEndMontage가 끝난 뒤 반환합니다.
+	WinnerCharacter->Multicast_PutBackGunMontage(EGunHoldReason::Win);
 }
 
 void AMainGameMode::InitMainRevolverLiveBulletIfNeeded()

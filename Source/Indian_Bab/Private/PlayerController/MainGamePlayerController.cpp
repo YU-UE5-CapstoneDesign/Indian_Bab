@@ -25,6 +25,9 @@
 #include "Components/WidgetComponent.h"
 #include "Components/WidgetSwitcher.h"
 #include "Widget/GameResultWidget.h"
+#include "Widget/ReadyWidget.h"
+#include "Game/MainGameState.h"
+#include "UObject/ConstructorHelpers.h"
 #include "Engine/World.h"
 #if WITH_EDITOR
 #include "HeadMountedDisplayFunctionLibrary.h"
@@ -33,6 +36,8 @@
 
 AMainGamePlayerController::AMainGamePlayerController()
 {
+    static ConstructorHelpers::FClassFinder<UReadyWidget> ReadyBP(TEXT("/Game/Blueprint/Widget/WBP_Ready"));
+    if (ReadyBP.Succeeded()) PCReadyWidgetClass = ReadyBP.Class;
 	PlayerCameraManagerClass = ALobbyCameraManager::StaticClass();
 }
 
@@ -97,6 +102,11 @@ void AMainGamePlayerController::BeginPlay()
 
 void AMainGamePlayerController::EndPlay(const EEndPlayReason::Type EndPlayReason)
 {
+    if (PCReadyWidgetInstance)
+    {
+        PCReadyWidgetInstance->RemoveFromParent();
+        PCReadyWidgetInstance = nullptr;
+    }
     if (IsLocalPlayerController())
     {
         if (UGameInstance* GI = GetGameInstance())
@@ -331,7 +341,9 @@ void AMainGamePlayerController::CreateMainGameWidget()
     if (MainGameWidgetInstance)
     {
         MainGameWidgetInstance->InitWidget();
-        if (bUseVRPlayMode || Cast<ALobbyVRCharacter>(GetPawn()))
+        const AMainGameState* GS = GetWorld() ? GetWorld()->GetGameState<AMainGameState>() : nullptr;
+        if (bUseVRPlayMode || Cast<ALobbyVRCharacter>(GetPawn()) || !GS
+            || GS->CurrentGamePhase == EGamePhase::Lobby || GS->CurrentGamePhase == EGamePhase::Starting)
         {
             MainGameWidgetInstance->SetVisibility(ESlateVisibility::Hidden);
         }
@@ -546,6 +558,7 @@ void AMainGamePlayerController::Server_RequestMainRevolverShot_Implementation()
 // 앉았을 때 대기화면 생성
 void AMainGamePlayerController::ClientOnSeated_Implementation()
 {
+    if (!IsLocalController() || bUseVRPlayMode || Cast<ALobbyVRCharacter>(GetPawn())) return;
     // 로비 조작(WASD)을 끄고 메인 게임(마우스/UI) 조작으로 스위칭(기존)
     // 현재는 자동 착석시작이라 메인 게임 조작으로 시작
     ApplyMainGameMappingContext();
@@ -553,14 +566,28 @@ void AMainGamePlayerController::ClientOnSeated_Implementation()
     // 착석 시(게임 시작 시) 메인 게임 위젯 생성
     if (!MainGameWidgetInstance) CreateMainGameWidget();
 
-    // ReadyButton만 보이게
-    MainGameWidgetInstance->SetVisibility(ESlateVisibility::Visible);
-    MainGameWidgetInstance->SetPCReadyMode(true);
+    if (MainGameWidgetInstance) MainGameWidgetInstance->SetVisibility(ESlateVisibility::Collapsed);
+    if (!PCReadyWidgetInstance && PCReadyWidgetClass)
+        PCReadyWidgetInstance = CreateWidget<UReadyWidget>(this, PCReadyWidgetClass);
+    if (PCReadyWidgetInstance)
+    {
+        if (!PCReadyWidgetInstance->IsInViewport()) PCReadyWidgetInstance->AddToPlayerScreen(20);
+        PCReadyWidgetInstance->SetVisibility(ESlateVisibility::SelfHitTestInvisible);
+    }
+    bRMBHeld = false;
+    ResetIgnoreLookInput();
+    EnterUIMode();
 }
 
 // 접속 인원 모두 레디를 눌렀을 때
 void AMainGamePlayerController::Client_FinishPCReady_Implementation()
 {
+    if (PCReadyWidgetInstance)
+    {
+        PCReadyWidgetInstance->RemoveFromParent();
+        PCReadyWidgetInstance = nullptr;
+    }
+    if (!MainGameWidgetInstance) CreateMainGameWidget();
     // 메인 게임 위젯 보이게
     if (MainGameWidgetInstance)
     {
@@ -585,6 +612,14 @@ int AMainGamePlayerController::GetPlayerIdSafe()
 {
     const APlayerState* PS = GetPlayerState<APlayerState>();
     return PS ? PS->GetPlayerId() : -1;
+}
+
+void AMainGamePlayerController::Server_RequestStart_Implementation()
+{
+#if WITH_SERVER_CODE
+    AMainGameMode* GM = GetWorld() ? GetWorld()->GetAuthGameMode<AMainGameMode>() : nullptr;
+    if (GM) GM->HandlePlayerStart(this);
+#endif
 }
 
 void AMainGamePlayerController::OnMainGameTabPressed(const FInputActionValue& Value)

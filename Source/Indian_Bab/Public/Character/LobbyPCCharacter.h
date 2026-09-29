@@ -3,6 +3,8 @@
 #include "Character/LobbyCharacter.h"
 #include "LobbyPCCharacter.generated.h"
 
+class UPCCrosshairWidget;
+
 UCLASS()
 class INDIAN_BAB_API ALobbyPCCharacter : public ALobbyCharacter
 {
@@ -33,17 +35,33 @@ public:
     UFUNCTION(NetMulticast, Reliable)
     void Multicast_ClearPCMainRevolver();
 
-    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Main Revolver", meta = (ClampMin = "1.0"))
-    float PCMainShotDotSize = 6.0f;
+    // 독립 PC 조준점의 표시 여부를 확인합니다.
+    UFUNCTION(BlueprintPure, Category = "PC|Aim")
+    bool ShouldShowMainShotCrosshair() const;
 
 protected:
     virtual void BeginPlay() override;
+    virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
     virtual void UpdateAimFromView() override;
     virtual void OnSeatedCameraReady(const FRotator& SeatRotation) override;
     void ApplySeatedCamera(const FRotator& InitialViewRotation, const FRotator& SeatRotation);
     virtual void DrawMainShotAimLine() override;
 
 private:
+    UPROPERTY(EditDefaultsOnly, Category = "PC|Aim")
+    TSubclassOf<UPCCrosshairWidget> PCCrosshairWidgetClass;
+
+    UPROPERTY(Transient)
+    TObjectPtr<UPCCrosshairWidget> PCCrosshairWidget;
+
+    UPROPERTY(Transient)
+    TSubclassOf<UAnimInstance> DefaultFirstPersonAnimClass;
+
+    bool bUsingSharedAimPose = false;
+    bool bSavedFirstPersonFOV = false;
+    bool bSavedFirstPersonScale = false;
+    void UpdateMainAimPresentation();
+
     // 기존 PC BP의 상호작용 액션을 재사용합니다.
     UPROPERTY(EditDefaultsOnly, Category = "Input")
     TObjectPtr<UInputAction> IA_Interact;

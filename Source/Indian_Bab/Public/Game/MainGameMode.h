@@ -44,6 +44,7 @@ public:
 
 	// 준비 완료 버튼을 눌렀을 때 호출
 	void HandlePlayerReady(APlayerController* ReadyPlayer);
+    void HandlePlayerStart(APlayerController* RequestPlayer);
 
 	// 플레이어가 의자에 앉았을 때 호출됨
 	void PlayerSeated(APlayerController* SeatedPlayer, ASeatActor* SeatedChair);
@@ -147,7 +148,7 @@ private:
 	// 빈 의자 찾기
 	ASeatActor* FindEmptySeat();
 
-	// 모든 플레이어가 Ready를 눌렀을 때 게임 시작 준비
+	// 전원 준비 후 첫 입장자가 Start를 눌렀을 때 시작 준비
 	void StartGameAfterAllReady();
 
 	int32 GetRequiredReadyPlayerCount() const;
@@ -179,6 +180,10 @@ private:
 	// 준비 완료한 플레이어 목록
 	UPROPERTY()
 	TArray<TObjectPtr<APlayerController>> ReadyPlayers;
+
+    // PostLogin 순서 유지. 첫 플레이어 퇴장 시 다음 입장자가 시작 권한을 받습니다.
+    UPROPERTY()
+    TArray<TObjectPtr<APlayerController>> LobbyPlayers;
 
 	// 게임 시작을 위한 최소/최대 플레이어 수
 	UPROPERTY(EditDefaultsOnly, Category = "Game Start")

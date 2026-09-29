@@ -4,6 +4,17 @@
 #include "GameFramework/PlayerController.h"
 #include "PlayerState/MainPlayerState.h"
 
+void UTurnInfoWidget::InitializeForPlayer(APlayerController* InOwningPlayer)
+{
+	if (InOwningPlayer)
+	{
+		SetOwningPlayer(InOwningPlayer);
+	}
+
+	BindGameState();
+	RefreshFromGameState();
+}
+
 void UTurnInfoWidget::NativeConstruct()
 {
 	Super::NativeConstruct();

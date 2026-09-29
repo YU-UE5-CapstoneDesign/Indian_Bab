@@ -14,6 +14,8 @@ class INDIAN_BAB_API UReadyWidget : public UUserWidget
 
 protected:
 	virtual void NativeConstruct() override;
+    virtual void NativeTick(const FGeometry& MyGeometry, float InDeltaTime) override;
+    virtual void NativeDestruct() override;
 
 public:
 	void ConfirmReady();
@@ -25,7 +27,10 @@ private:
 	UPROPERTY(meta = (BindWidgetOptional))
 	TObjectPtr<UTextBlock> Text_ReadyState;
 
-	bool bReadySubmitted = false;
+    UPROPERTY(meta = (BindWidget))
+    TObjectPtr<UTextBlock> Text_ReadyPlayer;
+
+    void RefreshReadyState();
 
 	UFUNCTION()
 	void OnReadyButtonClicked();

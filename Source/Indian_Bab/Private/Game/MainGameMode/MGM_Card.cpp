@@ -77,6 +77,35 @@ void AMainGameMode::CheckPlayerCard()
 	if(!CurrentWinnerPS) return;
 
     UE_LOG(LogTemp, Warning, TEXT("[GM] Winner : %d[%s]"), CurrentWinnerPS -> GetPlayerId(), *CurrentWinnerPS->GetMyCard().ToDisplayString());
+
+	// 승자를 메인 리볼버 사수이자 다음 라운드 선 플레이어로 지정
+	// 미리 게임 턴 바꿔서 색깔 변경하기 위해서
+	for (int32 i = 0; i < GS->SeatChairArray.Num(); ++i)
+	{
+		ASeatActor* Seat = GS->SeatChairArray[i];
+		if (!Seat || !Seat->GetOccupant()) continue;
+
+		ACharacter* Character = Cast<ACharacter>(Seat->GetOccupant());
+		if (!Character) continue;
+
+		AMainPlayerState* PS = Character->GetPlayerState<AMainPlayerState>();
+
+		if (PS == CurrentWinnerPS)
+		{
+			CheckPlayer = PS->GetPlayerId();
+			GS->ChangeGameTurn(PS->GetPlayerId(), i);
+			break;
+		}
+	}
+
+	// 승자 판정이 끝났으므로 이번 라운드 카드 제거
+    for (APlayerState* PlayerState : GS->PlayerArray)
+    {
+        if (AMainPlayerState* MPS = Cast<AMainPlayerState>(PlayerState))
+        {
+            MPS->SetMyCard(FCardData());
+        }
+    }
 	
 	AMainGamePlayerController* PC = Cast<AMainGamePlayerController>(CurrentWinnerPS->GetOwner());
 	if (!PC) return;
