@@ -5,6 +5,7 @@
 #include "Components/EditableTextBox.h"
 //#include "Components/MultiLineEditableText.h"
 #include "Components/Button.h"
+#include "Components/CheckBox.h"
 #include "Widget/BetProgressWidget.h"
 #include "Widget/TurnInfoWidget.h"
 #include "Game/MainGameState.h"
@@ -52,11 +53,13 @@ void UMainGameWidget::NativeDestruct()
     if (Button_CheckCall) Button_CheckCall->OnClicked.RemoveAll(this);
     if (Button_Fold)      Button_Fold->OnClicked.RemoveAll(this);
     if (Button_Ready)     Button_Ready->OnClicked.RemoveAll(this);
+    if (CheckBox_133) CheckBox_133->OnCheckStateChanged.RemoveAll(this);
 
     // 외부 객체 구독 해제
     if (MainPS)
     {
         MainPS->OnTriggerCountChanged.RemoveAll(this);
+        MainPS->OnAddTokenStateChanged.RemoveAll(this);
     }
 }
 
@@ -110,6 +113,7 @@ void UMainGameWidget::OnReadyClicked()
 void UMainGameWidget::NativeConstruct() 
 {
 	Super::NativeConstruct();
+
     if (Button_Ready)
     {
         Button_Ready->OnClicked.RemoveAll(this);
@@ -142,12 +146,20 @@ void UMainGameWidget::NativeConstruct()
 	{
 		Button_Fold->OnClicked.AddDynamic(this, &UMainGameWidget::OnButtonFold);
 	}
+	if (CheckBox_133)
+	{
+		CheckBox_133->OnCheckStateChanged.RemoveAll(this);
+		CheckBox_133->OnCheckStateChanged.AddDynamic(
+			this,
+			&UMainGameWidget::OnAddTokenCheckStateChanged);
+	}
 	MainGamePC = Cast<AMainGamePlayerController>(GetOwningPlayer());
     if (WBP_TurnInfoWidget)
     {
         WBP_TurnInfoWidget->InitializeForPlayer(MainGamePC);
     }
     RefreshBettingButtons();
+    RefreshAddTokenUI();
 
 }
 
@@ -276,8 +288,11 @@ void UMainGameWidget::InitWidget()
 
     MainPS->OnTriggerCountChanged.RemoveAll(this);
     MainPS->OnTriggerCountChanged.AddUObject(this, &UMainGameWidget::UpdateSubRevolverCount);
+    MainPS->OnAddTokenStateChanged.RemoveAll(this);
+    MainPS->OnAddTokenStateChanged.AddUObject(this, &UMainGameWidget::RefreshAddTokenUI);
 
     UpdateSubRevolverCount(MainPS->TotalTriggerCount);
+    RefreshAddTokenUI();
 }
 
 int32 UMainGameWidget::GetBetNum() const
@@ -288,6 +303,26 @@ int32 UMainGameWidget::GetBetNum() const
 bool UMainGameWidget::HandleVRClickAtWidgetLocation(const FVector2D& WidgetLocalHitLocation)
 {
     RefreshBettingButtons();
+
+	// 덧셈 토큰은 현재 턴과 무관하게 최종 공개 전까지 바꿀 수 있습니다.
+	if (IsCheckBoxUnderWidgetLocation(CheckBox_133, WidgetLocalHitLocation))
+	{
+		// WidgetInteraction의 기본 클릭이 이미 처리됐다면 수동 처리로 두 번 토글하지 않습니다.
+		if (bAddTokenChangedBySlate)
+		{
+			bAddTokenChangedBySlate = false;
+			return true;
+		}
+
+		const bool bNewChecked = !CheckBox_133->IsChecked();
+		CheckBox_133->SetIsChecked(bNewChecked);
+		if (MainGamePC)
+		{
+			MainGamePC->RequestSetAddTokenSelected(bNewChecked);
+		}
+		return true;
+	}
+
     if (!CanUseBettingButtons()) return false;
 	if (IsButtonUnderWidgetLocation(Plus_Button, WidgetLocalHitLocation))
 	{
@@ -331,6 +366,63 @@ bool UMainGameWidget::IsButtonUnderWidgetLocation(const UButton* Button, const F
 
 	const FVector2D AbsoluteHitLocation = GetCachedGeometry().LocalToAbsolute(WidgetLocalHitLocation);
 	return Button->GetCachedGeometry().IsUnderLocation(AbsoluteHitLocation);
+}
+
+bool UMainGameWidget::IsCheckBoxUnderWidgetLocation(const UCheckBox* CheckBox, const FVector2D& WidgetLocalHitLocation) const
+{
+	if (!CheckBox || !CheckBox->GetIsEnabled() || !CheckBox->IsVisible())
+	{
+		return false;
+	}
+
+	const FVector2D AbsoluteHitLocation = GetCachedGeometry().LocalToAbsolute(WidgetLocalHitLocation);
+	return CheckBox->GetCachedGeometry().IsUnderLocation(AbsoluteHitLocation);
+}
+
+bool UMainGameWidget::CanUseAddToken() const
+{
+	const AMainGameState* GS = GetWorld() ? GetWorld()->GetGameState<AMainGameState>() : nullptr;
+	return !bPCReadyMode && MainGamePC && MainGamePC->IsLocalController() && MainPS && GS
+		&& GS->CurrentGamePhase == EGamePhase::Playing
+		&& MainPS->isAlive && !MainPS->isFold
+		&& MainPS->GetRemainingAddTokenCount() > 0;
+}
+
+void UMainGameWidget::OnAddTokenCheckStateChanged(bool bIsChecked)
+{
+	if (bUpdatingAddTokenUI || !MainGamePC)
+	{
+		return;
+	}
+
+	bAddTokenChangedBySlate = true;
+
+	if (bIsChecked && !CanUseAddToken())
+	{
+		RefreshAddTokenUI();
+		return;
+	}
+
+	MainGamePC->RequestSetAddTokenSelected(bIsChecked);
+}
+
+void UMainGameWidget::RefreshAddTokenUI()
+{
+	if (Txt_AddTokenCount)
+	{
+		const int32 RemainingCount = MainPS ? MainPS->GetRemainingAddTokenCount() : 0;
+		Txt_AddTokenCount->SetText(FText::Format(
+			NSLOCTEXT("MainGameWidget", "AdditionTokenRemaining", "{0}"),
+			FText::AsNumber(RemainingCount)));
+	}
+
+	if (CheckBox_133)
+	{
+		bUpdatingAddTokenUI = true;
+		CheckBox_133->SetIsChecked(MainPS && MainPS->IsAddTokenSelected());
+		CheckBox_133->SetIsEnabled(CanUseAddToken());
+		bUpdatingAddTokenUI = false;
+	}
 }
 
 
@@ -406,4 +498,9 @@ void UMainGameWidget::NativeTick(const FGeometry& MyGeometry, float InDeltaTime)
 {
     Super::NativeTick(MyGeometry, InDeltaTime);
     RefreshBettingButtons();
+
+	if (CheckBox_133)
+	{
+		CheckBox_133->SetIsEnabled(CanUseAddToken());
+	}
 }

@@ -84,6 +84,7 @@ void AMainGameMode::HandleFoldAction(AMainGamePlayerController* RequestPC)
 
 
 	PS->isFold = true;
+	PS->SetAddTokenSelected(false);
 
 	ALobbyCharacter* Character = Cast<ALobbyCharacter>(RequestPC->GetPawn());
 	if (Character)

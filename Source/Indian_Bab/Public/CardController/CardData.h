@@ -19,7 +19,7 @@ struct FCardData : public FTableRowBase
 {
     GENERATED_BODY()
 
-    // 카드 숫자 (1~13, 0 = 조커)
+    // 카드 숫자 (일반 1~13, 조커 14, 0은 빈 카드)
     UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Card Info")
     int32 Value;
 

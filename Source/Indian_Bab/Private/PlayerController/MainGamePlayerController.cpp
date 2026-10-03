@@ -411,6 +411,11 @@ void AMainGamePlayerController::RequestFold()
     Server_RequestBetAction(EBetAction::Fold, 0);
 }
 
+void AMainGamePlayerController::RequestSetAddTokenSelected(bool bSelected)
+{
+    Server_SetAddTokenSelected(bSelected);
+}
+
 // 내 스팀 닉네임 읽기
 FString AMainGamePlayerController::GetMySteamNickname() const
 {
@@ -535,6 +540,24 @@ void AMainGamePlayerController::Server_RequestBetAction_Implementation(EBetActio
     GM->HandleBetAction(this, Action, RaiseCount);
 #endif
 
+}
+
+void AMainGamePlayerController::Server_SetAddTokenSelected_Implementation(bool bSelected)
+{
+    AMainPlayerState* PS = GetPlayerState<AMainPlayerState>();
+    if (!PS) return;
+
+    // 체크 해제는 언제든 허용하여 예약 상태가 남지 않게 합니다.
+    if (!bSelected)
+    {
+        PS->SetAddTokenSelected(false);
+        return;
+    }
+
+    const AMainGameState* GS = GetWorld() ? GetWorld()->GetGameState<AMainGameState>() : nullptr;
+    if (!GS || GS->CurrentGamePhase != EGamePhase::Playing) return;
+
+    PS->SetAddTokenSelected(true);
 }
 
 void AMainGamePlayerController::Server_SetSteamNickname_Implementation(const FString& NewNickname)

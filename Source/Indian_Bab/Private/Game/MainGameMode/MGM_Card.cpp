@@ -73,10 +73,29 @@ void AMainGameMode::CheckPlayerCard()
 	AMainGameState* GS = GetGameState<AMainGameState>();
     if (!GS) return;
 
+	// 최종 비교에 실제로 참가하는 플레이어만 예약한 토큰을 소모합니다.
+	// 폴드했거나 사망한 플레이어의 예약은 취소되고 사용 횟수는 유지됩니다.
+	for (ASeatActor* Seat : GS->SeatChairArray)
+	{
+		ACharacter* OccupantCharacter = Cast<ACharacter>(Seat->GetOccupant());
+		if(!OccupantCharacter) continue;
+
+		AMainPlayerState* PS = OccupantCharacter ->GetPlayerState<AMainPlayerState>();
+		if(!PS) continue;
+
+		PS->CommitAddTokenForComparison();
+	}
+
     CurrentWinnerPS = MaxCardPlayer();
 	if(!CurrentWinnerPS) return;
 
-    UE_LOG(LogTemp, Warning, TEXT("[GM] Winner : %d[%s]"), CurrentWinnerPS -> GetPlayerId(), *CurrentWinnerPS->GetMyCard().ToDisplayString());
+    UE_LOG(LogTemp, Warning,
+        TEXT("[CardCompare] Winner Player=%d Card=%s Base=%d AddToken=%s Effective=%d"),
+        CurrentWinnerPS->GetPlayerId(),
+        *CurrentWinnerPS->GetMyCard().ToDisplayString(),
+        CurrentWinnerPS->GetMyCard().Value,
+        CurrentWinnerPS->IsAddTokenAppliedThisRound() ? TEXT("ON") : TEXT("OFF"),
+        CurrentWinnerPS->GetCardComparisonValue());
 
 	// 승자를 메인 리볼버 사수이자 다음 라운드 선 플레이어로 지정
 	// 미리 게임 턴 바꿔서 색깔 변경하기 위해서
@@ -155,6 +174,7 @@ TObjectPtr<AMainPlayerState> AMainGameMode::MaxCardPlayer()
 
     AMainPlayerState* MaxPS = nullptr;
     FCardData MaxCard;
+    int32 MaxComparisonValue = 0;
 
     bool bFound = false;
 
@@ -170,11 +190,23 @@ TObjectPtr<AMainPlayerState> AMainGameMode::MaxCardPlayer()
 		if(!PS -> isAlive) continue;
         if(PS -> isFold) continue;
 
-        FCardData CurrentCard = PS->GetMyCard();
+        const FCardData CurrentCard = PS->GetMyCard();
+        const int32 CurrentComparisonValue = PS->GetCardComparisonValue();
+        const bool bHigher = !bFound || MainCardManager->IsCardHigher(
+            CurrentCard, CurrentComparisonValue, MaxCard, MaxComparisonValue);
 
-        if (!bFound || MainCardManager -> IsCardHigher(CurrentCard, MaxCard))
+        UE_LOG(LogTemp, Warning,
+            TEXT("[CardCompare] Player=%d Card=%s Base=%d AddToken=%s Effective=%d"),
+            PS->GetPlayerId(),
+            *CurrentCard.ToDisplayString(),
+            CurrentCard.Value,
+            PS->IsAddTokenAppliedThisRound() ? TEXT("ON") : TEXT("OFF"),
+            CurrentComparisonValue);
+
+        if (bHigher)
         {
             MaxCard = CurrentCard;
+            MaxComparisonValue = CurrentComparisonValue;
             MaxPS = PS;
             bFound = true;
         }

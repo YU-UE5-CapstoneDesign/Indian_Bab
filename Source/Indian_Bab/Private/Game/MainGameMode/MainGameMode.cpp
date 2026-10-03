@@ -541,6 +541,7 @@ void AMainGameMode::StartGameAfterAllReady()
 		if (MPS)
 		{
 			MPS->SetInitSubRevolver();
+			MPS->ResetAddToken();
 		}
 	}
 
@@ -872,6 +873,7 @@ void AMainGameMode::ResetFoldState()
 		if (!MPS) continue;
 
 		MPS->isFold = false;
+		MPS->ResetAddToken();
 	}
 }
 

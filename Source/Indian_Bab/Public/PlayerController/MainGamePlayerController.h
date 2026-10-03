@@ -60,6 +60,9 @@ public:
     UFUNCTION(BlueprintCallable)
     void RequestFold();
 
+    UFUNCTION(BlueprintCallable, Category = "Addition Token")
+    void RequestSetAddTokenSelected(bool bSelected);
+
 	/** Close the world-space VR menu and return to gameplay. */
 	UFUNCTION(BlueprintCallable, Category = "VR UI")
 	bool CloseVRMenu();
@@ -110,6 +113,9 @@ private:
     // 서버로 보내는 RPC
     UFUNCTION(Server, Reliable)
     void Server_RequestBetAction(EBetAction Action, int32 RaiseCount);
+
+    UFUNCTION(Server, Reliable)
+    void Server_SetAddTokenSelected(bool bSelected);
 
     UFUNCTION(Server, Reliable)
     void Server_SetSteamNickname(const FString& NewNickname);

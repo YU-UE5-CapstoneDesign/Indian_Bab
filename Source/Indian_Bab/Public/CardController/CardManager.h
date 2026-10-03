@@ -40,8 +40,7 @@ public:
     int32 GetSuitRank(const FString& Suit);
 
     // 어떤 카드가 더 큰 지 비교
-    bool IsCardHigher(const FCardData& A, const FCardData& B);
-
+    bool IsCardHigher(const FCardData& A, int32 AComparisonValue, const FCardData& B, int32 BComparisonValue);
 
 protected:
     // 게임 시작 시 자동으로 덱 초기화

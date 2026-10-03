@@ -6,6 +6,7 @@
 #include "MainGameWidget.generated.h"
 
 class UButton;
+class UCheckBox;
 class UDeckLeftWidget;
 class UTextBlock;
 class UEditableTextBox;
@@ -51,8 +52,11 @@ private:
 	UPROPERTY(meta = (BindWidget))
 	TObjectPtr<UEditableTextBox> SubRevolverCount;
 
-	// UPROPERTY(meta = (BindWidget))
-	// TObjectPtr<UEditableTextBox> Text_PlusTokenCount;
+	UPROPERTY(meta = (BindWidgetOptional))
+	TObjectPtr<UCheckBox> CheckBox_133;
+
+	UPROPERTY(meta = (BindWidgetOptional))
+	TObjectPtr<UTextBlock> Txt_AddTokenCount;
 
 	UPROPERTY(EditAnywhere)
 	int32 BetNum = 1;
@@ -106,6 +110,14 @@ private:
 	UFUNCTION()
 	void UpdateSubRevolverCount(int32 Count);
 
+	UFUNCTION()
+	void OnAddTokenCheckStateChanged(bool bIsChecked);
+
+	bool CanUseAddToken() const;
+	void RefreshAddTokenUI();
+	bool bUpdatingAddTokenUI = false;
+	bool bAddTokenChangedBySlate = false;
+
 public:
 	// 플레이어 컨트롤러 및 플레이어 스테이트 등록
 	void InitWidget();
@@ -118,6 +130,7 @@ public:
 
 private:
 	bool IsButtonUnderWidgetLocation(const UButton* Button, const FVector2D& WidgetLocalHitLocation) const;
+	bool IsCheckBoxUnderWidgetLocation(const UCheckBox* CheckBox, const FVector2D& WidgetLocalHitLocation) const;
 
 	UFUNCTION()
 	void MinusButtonClicked();
