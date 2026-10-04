@@ -62,6 +62,8 @@ public:
 	void HandleMainRevolverShotAction(AMainGamePlayerController* RequestPC);
 
 	void HandleMainRevolverGrabbed(ALobbyCharacter* Character);
+	void HandleMainRevolverGrabStarted(ALobbyCharacter* Character);
+	void HandleMainRevolverGrabInterrupted(ALobbyCharacter* Character);
 
 	// 자기 머리에 겨냥했을 때
 	void HandleFoldMontageFinished(ALobbyCharacter* Character);

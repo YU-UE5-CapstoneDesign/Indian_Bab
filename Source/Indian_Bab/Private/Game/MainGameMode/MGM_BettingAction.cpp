@@ -196,6 +196,24 @@ void AMainGameMode::OnMainRevolverGrabTimerExpired()
 	FinishMainShotPhase();
 }
 
+void AMainGameMode::HandleMainRevolverGrabStarted(ALobbyCharacter* Character)
+{
+	if (!HasAuthority() || !Character) return;
+
+	AMainGameState* GS = GetGameState<AMainGameState>();
+	if (!GS) return;
+
+	GetWorldTimerManager().ClearTimer(TimerHandle);
+	GS->ClearTimerInfo();
+}
+
+void AMainGameMode::HandleMainRevolverGrabInterrupted(ALobbyCharacter* Character)
+{
+	if (!HasAuthority() || !Character) return;
+
+	ManageShotPhase();
+}
+
 void AMainGameMode::HandleMainRevolverGrabbed(ALobbyCharacter* Character)
 {
 	if (!HasAuthority() || !Character) return;

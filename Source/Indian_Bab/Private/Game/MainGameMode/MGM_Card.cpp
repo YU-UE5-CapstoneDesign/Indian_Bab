@@ -148,22 +148,21 @@ void AMainGameMode::CheckPlayerCard()
 	GS->SetMainShotInfo(CurrentWinnerPS->GetPlayerId(), GS->CurrentBulletCount);
 
 	WinnerCharacter->SetActiveRevolver(Revolver);
-	WinnerCharacter->BeginManualMainRevolverPhase();
+	WinnerCharacter->BeginManualMainRevolverPhase(!Cast<ALobbyPCCharacter>(WinnerCharacter));
 
-	if (ALobbyVRCharacter* WinnerVRCharacter = Cast<ALobbyVRCharacter>(WinnerCharacter))
+	// vr/pc 짚는 모드 분할
+	if(GS->CurrentBulletCount > 0)
 	{
-		WinnerVRCharacter->Client_HideMainGameWidget();
-	}
-
-	ManageShotPhase();
-	if (ALobbyPCCharacter* PCCharacter = Cast<ALobbyPCCharacter>(WinnerCharacter))
-	{
-		if (GS->CurrentBulletCount > 0)
+		if (ALobbyVRCharacter* WinnerVRCharacter = Cast<ALobbyVRCharacter>(WinnerCharacter))
+		{
+			WinnerVRCharacter->Client_HideMainGameWidget();
+		}
+		else if(Cast<ALobbyPCCharacter>(WinnerCharacter))
 		{
 			PC->Client_SetPCMainShotMode(true);
-			PCCharacter->Multicast_BeginPCMainRevolver(Revolver);
 		}
 	}
+	ManageShotPhase();
 }
 
 // 활성 인원 중에서 가장 큰 값을 가진 플레이어

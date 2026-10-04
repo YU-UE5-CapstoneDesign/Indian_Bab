@@ -664,11 +664,23 @@ void AMainGamePlayerController::Client_SetPCMainShotMode_Implementation(bool bEn
     }
 }
 
-// PC 격발 모드에서 좌클릭하면 서버에 격발을 요청합니다.
+// PC 메인 리볼버 페이즈에서 좌클릭 처리(총 획득, 격발).
 void AMainGamePlayerController::OnPCMainShotPressed()
 {
     if (!CanProcessPCInput() || !bPCMainShotMode) return;
-    Server_RequestMainRevolverShot();
+
+    ALobbyPCCharacter* PCCharacter = Cast<ALobbyPCCharacter>(GetPawn());
+    if (!PCCharacter) return;
+
+    // 총 집은 후에 격발 처리
+    if (PCCharacter->IsMainRevolverGrabbed())
+    {
+        Server_RequestMainRevolverShot();
+        return;
+    }
+
+    // 집기 판정은 서버에서 시선 레이캐스트로 한 번만 확인합니다.
+    PCCharacter->Server_GrabMainRevolver();
 }
 
 // VR 캐릭터의 발사 입력을 서버 격발 요청으로 전달합니다.

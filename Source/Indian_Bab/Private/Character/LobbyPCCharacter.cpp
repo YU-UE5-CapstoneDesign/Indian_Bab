@@ -10,6 +10,7 @@
 #include "Interface/InteractableInterface.h"
 #include "Actor/SeatActor.h"
 #include "Actor/Revolver.h"
+#include "Game/MainGameMode.h"
 #include "Animation/AnimInstance.h"
 #include "PCCrosshairWidget.h"
 #include "UObject/ConstructorHelpers.h"
@@ -105,6 +106,28 @@ void ALobbyPCCharacter::Client_InitPCSeated_Implementation(FVector Location, FRo
 	OnRep_IsSitting();
 }
 
+void ALobbyPCCharacter::Server_GrabMainRevolver_Implementation()
+{
+	if (bMainRevolverGrabInProgress || bMainRevolverGrabbed) return;
+	if (!ActiveRevolver || !ActiveRevolver->ActorHasTag(FName("MainRevolver")) || !GetWorld()) return;
+	FVector Start, End;
+	if (!GetMainShotTrace(2500.0f, Start, End)) return;
+
+	FHitResult Hit;
+	FCollisionQueryParams Params;
+	Params.AddIgnoredActor(this);
+	if (!GetWorld()->LineTraceSingleByChannel(Hit, Start, End, ECC_Visibility, Params) || Hit.GetActor() != ActiveRevolver.Get()) return;
+
+	bMainRevolverGrabInProgress = true;
+#if WITH_SERVER_CODE
+	if (AMainGameMode* GM = GetWorld()->GetAuthGameMode<AMainGameMode>())
+	{
+		GM->HandleMainRevolverGrabStarted(this);
+	}
+#endif
+	Multicast_BeginPCMainRevolver(ActiveRevolver.Get());
+}
+
 void ALobbyPCCharacter::Multicast_BeginPCMainRevolver_Implementation(ARevolver* Revolver)
 {
 	if (!Revolver) return;
@@ -113,6 +136,8 @@ void ALobbyPCCharacter::Multicast_BeginPCMainRevolver_Implementation(ARevolver* 
 	ActiveRevolver = Revolver;
 	bMainRevolverGrabbed = false;
 	bIsPuttingBackGun = false;
+	GunHoldReason = EGunHoldReason::Win;
+	UpdateMainAimPresentation();
 	// 이미 멀티캐스트로 도착했으므로 추가 RPC 없이 공통 재생 처리만 실행합니다.
 	PlayGrabGunMontage(EGunHoldReason::Win);
 }
@@ -327,10 +352,8 @@ bool ALobbyPCCharacter::ShouldShowMainShotCrosshair() const
     const APlayerController* PC = Cast<APlayerController>(GetController());
     return PC
         && PC->IsLocalController()
-        && bShowMainShotAimLine
-        && GunHoldReason == EGunHoldReason::Win
-        && bMainRevolverGrabbed
         && ActiveRevolver != nullptr
+		&& ActiveRevolver->ActorHasTag(FName("MainRevolver"))
         && !bIsPuttingBackGun;
 }
 

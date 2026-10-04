@@ -27,6 +27,9 @@ public:
     UPROPERTY(EditDefaultsOnly, Category = "PC|Seat")
     float PCSeatHeightOffset = 0.0f;
 
+    UFUNCTION(Server, Reliable)
+    void Server_GrabMainRevolver();
+
     // PC 몽타주와 손의 총 표시를 모든 클라이언트에 적용합니다.
     UFUNCTION(NetMulticast, Reliable)
     void Multicast_BeginPCMainRevolver(ARevolver* Revolver);

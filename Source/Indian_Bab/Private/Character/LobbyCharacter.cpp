@@ -642,7 +642,20 @@ void ALobbyCharacter::OnSitMontageEnded(UAnimMontage* Montage, bool bInterrupted
 
 void ALobbyCharacter::OnGrabGunMontageEnded(UAnimMontage* Montage, bool bInterrupted)
 {
-	if (bInterrupted) return;
+	if (bInterrupted)
+	{
+		if (HasAuthority() && GunHoldReason == EGunHoldReason::Win)
+		{
+			bMainRevolverGrabInProgress = false;
+#if WITH_SERVER_CODE
+			if (AMainGameMode* GM = GetWorld() ? GetWorld()->GetAuthGameMode<AMainGameMode>() : nullptr)
+			{
+				GM->HandleMainRevolverGrabInterrupted(this);
+			}
+#endif
+		}
+		return;
+	}
 	if (!HasAuthority()) return;
 #if WITH_SERVER_CODE
 	if (GunHoldReason == EGunHoldReason::Fold)
@@ -735,13 +748,14 @@ void ALobbyCharacter::SetActiveRevolver(ARevolver* NewRevolver)
 	ForceNetUpdate();
 }
 
-void ALobbyCharacter::BeginManualMainRevolverPhase()
+void ALobbyCharacter::BeginManualMainRevolverPhase(bool bEnterWinPose)
 {
 	if (!HasAuthority()) return;
 
-	GunHoldReason = EGunHoldReason::Win;
+	GunHoldReason = bEnterWinPose ? EGunHoldReason::Win : EGunHoldReason::None;
 	bShowMainShotAimLine = false;
 	bMainRevolverGrabbed = false;
+	bMainRevolverGrabInProgress = false;
 	bIsPuttingBackGun = false;
 
 	if (ActiveRevolver)
@@ -750,6 +764,7 @@ void ALobbyCharacter::BeginManualMainRevolverPhase()
 		if (ActiveRevolver->CollisionSphere)
 		{
 			ActiveRevolver->CollisionSphere->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
+			ActiveRevolver->CollisionSphere->SetCollisionResponseToChannel(ECC_Visibility, ECR_Block);
 		}
 	}
 
@@ -764,6 +779,7 @@ void ALobbyCharacter::ReturnMainRevolverToTableImmediately()
 
 	bShowMainShotAimLine = false;
 	bMainRevolverGrabbed = false;
+	bMainRevolverGrabInProgress = false;
 	bIsPuttingBackGun = false;
 	GunHoldReason = EGunHoldReason::None;
 
@@ -781,6 +797,7 @@ void ALobbyCharacter::MarkMainRevolverGrabbed()
 	if (!HasAuthority()) return;
 
 	bMainRevolverGrabbed = true;
+	bMainRevolverGrabInProgress = false;
 	ForceNetUpdate();
 }
 
