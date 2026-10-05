@@ -1,6 +1,7 @@
 #include "Game/MainGameMode.h"
 #include "Game/MainGameState.h"
 #include "Actor/SeatActor.h"
+#include "Actor/Revolver.h"
 #include "PlayerState/MainPlayerState.h"
 #include "PlayerController/MainGamePlayerController.h"
 #include "Character/LobbyCharacter.h"
@@ -101,6 +102,19 @@ void AMainGameMode::NotifyMatchClearHost()
 
 void AMainGameMode::Logout(AController* Exiting)
 {
+    AMainGameState* MainGS = GetGameState<AMainGameState>();
+    AMainPlayerState* LeavingPS = Exiting ? Cast<AMainPlayerState>(Exiting->PlayerState) : nullptr;
+    const int32 LeavingPlayerId = LeavingPS ? LeavingPS->GetPlayerId() : INDEX_NONE;
+    const bool bPlaying = MainGS && MainGS->CurrentGamePhase == EGamePhase::Playing;
+    const bool bResultPhase = MainGS && MainGS->CurrentGamePhase == EGamePhase::Result;
+    const bool bInGame = bPlaying || bResultPhase;
+    const bool bLeavingTurn = bInGame && LeavingPlayerId != INDEX_NONE
+        && MainGS->CurrentTurnPlayerId == LeavingPlayerId;
+    const bool bLeavingCheckPlayer = bPlaying && LeavingPlayerId != INDEX_NONE
+        && CheckPlayer == LeavingPlayerId;
+    const bool bLeavingWinner = bInGame && ((LeavingPS && CurrentWinnerPS == LeavingPS)
+        || (LeavingPlayerId != INDEX_NONE && MainGS->MainShotPlayerId == LeavingPlayerId));
+
     const bool bHostLeaving = !LobbyPlayers.IsEmpty() && LobbyPlayers[0] == Exiting;
     LobbyPlayers.Remove(Cast<APlayerController>(Exiting));
     if (bHostLeaving && bGameStartRequested)
@@ -150,11 +164,77 @@ void AMainGameMode::Logout(AController* Exiting)
 				return false;
 			});
 		}
+		else if (bInGame)
+		{
+			// CurrentPlayerIndex가 이 배열의 인덱스이므로 빈 좌석도 배열에서 유지합니다.
+			for (ASeatActor* Seat : GS->SeatChairArray)
+			{
+				if (!IsValid(Seat)) continue;
+				APawn* Occupant = Cast<APawn>(Seat->GetOccupant());
+				if (IsValid(Occupant) && Exiting && (Occupant == Exiting->GetPawn()
+					|| Occupant->GetController() == Exiting
+					|| (LeavingPS && Occupant->GetPlayerState() == LeavingPS)))
+				{
+					Seat->SetOccupant(nullptr);
+					break;
+				}
+			}
+			if (LeavingPS) LeavingPS->SetAliveState(false);
+			if (bLeavingTurn) GS->ChangeGameTurn(INDEX_NONE, GS->CurrentPlayerIndex);
+			if (bLeavingCheckPlayer) bCheckPlayerFolded = true;
+			if (bLeavingWinner) CurrentWinnerPS = nullptr;
+		}
 	}
 
 	// 2) Super::Logout — 엔진이 NumPlayers를 1 감소시킴.
 	Super::Logout(Exiting);
 	CheckGameStart();
+	if (bInGame && MainGS && !bGameEnded)
+	{
+		MainGS->AlivePlayerCount = CountAliveSeatedPlayers();
+		MainGS->ForceNetUpdate();
+		// 이탈 후 이번 라운드에 참여할 사람이 없다면 다음 라운드는 새 플레이어를 뽑습니다.
+		if (MainGS->AlivePlayerCount > 1 && UpdateActivePlayer(MainGS) == 0)
+			MainGS->CurrentPlayerIndex = INDEX_NONE;
+		if (bResultPhase && (MainGS->AlivePlayerCount <= 1 || bLeavingWinner))
+		{
+			// 발사 단계가 이탈로 중단되면 총을 즉시 책상으로 돌립니다.
+			ALobbyCharacter* WinnerCharacter = nullptr;
+			if (CurrentWinnerPS)
+			{
+				if (AMainGamePlayerController* WinnerPC = Cast<AMainGamePlayerController>(CurrentWinnerPS->GetOwner()))
+				{
+					WinnerCharacter = Cast<ALobbyCharacter>(WinnerPC->GetPawn());
+				}
+			}
+			if (IsValid(WinnerCharacter)) WinnerCharacter->ReturnMainRevolverToTableImmediately();
+			else if (ARevolver* Revolver = GetMainRevolver()) Revolver->ReturnToInitialTableTransform();
+			bMainRevolverPutBackInProgress = false;
+			FinishMainShotPhase();
+		}
+		else if (MainGS->AlivePlayerCount <= 1)
+		{
+			EndGame(GetLastAlivePlayer());
+		}
+		else if (bPlaying && bLeavingWinner)
+		{
+			NextRound();
+		}
+		else if (bPlaying)
+		{
+			if (bLeavingTurn)
+			{
+				GetWorldTimerManager().ClearTimer(TimerHandle);
+				MainGS->ClearTimerInfo();
+				MainGS->bTurnActionInProgress = false;
+				CheckNext();
+			}
+			else if (!MainGS->bTurnActionInProgress && UpdateActivePlayer(MainGS) <= 1)
+			{
+				NextRound();
+			}
+		}
+	}
 
 	// 3) MM 분기.
 	if (NumPlayers <= 0)

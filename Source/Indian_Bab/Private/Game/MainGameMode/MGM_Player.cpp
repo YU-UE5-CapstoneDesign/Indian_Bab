@@ -37,21 +37,24 @@ void AMainGameMode::PickRandomPlayer()
 	AMainGameState* GS = GetGameState<AMainGameState>();
 	if (!GS) return;
 
-	const int32 SeatedPlayerNum = GS-> SeatChairArray.Num();
-	if (SeatedPlayerNum <= 0) return;
+	TArray<int32> EligibleSeatIndices;
+	for (int32 Index = 0; Index < GS->SeatChairArray.Num(); ++Index)
+	{
+		ASeatActor* Seat = GS->SeatChairArray[Index];
+		ACharacter* Character = IsValid(Seat) ? Cast<ACharacter>(Seat->GetOccupant()) : nullptr;
+		AMainPlayerState* PS = IsValid(Character) ? Character->GetPlayerState<AMainPlayerState>() : nullptr;
+		if (IsValid(PS) && PS->isAlive)
+		{
+			EligibleSeatIndices.Add(Index);
+		}
+	}
+	if (EligibleSeatIndices.IsEmpty()) return;
 
-	int32 CurrentPlayerIndex = FMath::RandRange(0, SeatedPlayerNum - 1);
-	ASeatActor* CurrentChair = GS -> SeatChairArray[CurrentPlayerIndex];
-	if(!CurrentChair || !CurrentChair -> GetOccupant()) return;
-
-	ACharacter* OccupantCharacter = Cast<ACharacter>(CurrentChair->GetOccupant());
-	if (!OccupantCharacter) return;
-	AMainPlayerState* PS = OccupantCharacter -> GetPlayerState<AMainPlayerState>();
-	if(!PS) return;
-	
+	const int32 SeatIndex = EligibleSeatIndices[FMath::RandRange(0, EligibleSeatIndices.Num() - 1)];
+	ACharacter* Character = Cast<ACharacter>(GS->SeatChairArray[SeatIndex]->GetOccupant());
+	AMainPlayerState* PS = Character->GetPlayerState<AMainPlayerState>();
 	CheckPlayer = PS->GetPlayerId();
-	GS -> ChangeGameTurn(PS -> GetPlayerId(), CurrentPlayerIndex);
-	return;
+	GS->ChangeGameTurn(CheckPlayer, SeatIndex);
 }
 
 void AMainGameMode::PickByResult()
@@ -86,6 +89,21 @@ void AMainGameMode::PickByResult()
             return;
         }
     }
+}
+
+int32 AMainGameMode::CountAliveSeatedPlayers() const
+{
+	const AMainGameState* GS = GetGameState<AMainGameState>();
+	if (!GS) return 0;
+
+	int32 Count = 0;
+	for (ASeatActor* Seat : GS->SeatChairArray)
+	{
+		ACharacter* Character = IsValid(Seat) ? Cast<ACharacter>(Seat->GetOccupant()) : nullptr;
+		AMainPlayerState* PS = IsValid(Character) ? Character->GetPlayerState<AMainPlayerState>() : nullptr;
+		if (IsValid(PS) && PS->isAlive) ++Count;
+	}
+	return Count;
 }
 
 // 활성 인원 업데이트

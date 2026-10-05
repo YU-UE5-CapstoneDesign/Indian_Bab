@@ -121,6 +121,7 @@ protected:
 
 	// 활성 인원 업데이트
 	int32 UpdateActivePlayer(AMainGameState* GS);
+	int32 CountAliveSeatedPlayers() const;
 
 	// 결과 확인 및 승리 플레이어 PS 리턴
 	void CheckPlayerCard();

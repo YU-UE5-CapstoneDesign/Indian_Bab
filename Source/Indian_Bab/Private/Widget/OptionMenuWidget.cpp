@@ -32,11 +32,6 @@ void UOptionMenuWidget::NativeConstruct()
 
 	// 플레이어 컨트롤러 캐시
 	PlayerControllerRef = GetOwningPlayer();
-	Button_ExitGame->SetVisibility(
-		Cast<AMainGamePlayerController>(PlayerControllerRef)
-			? ESlateVisibility::Visible
-			: ESlateVisibility::Collapsed);
-	Button_ExitGame->SetIsEnabled(true);
 
 	// --- 모든 UI 이벤트에 C++ 함수 바인딩 ---
 	// 슬라이더

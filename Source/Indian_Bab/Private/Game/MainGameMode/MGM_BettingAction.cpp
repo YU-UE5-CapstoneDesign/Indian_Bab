@@ -279,37 +279,37 @@ void AMainGameMode::HandleFoldMontageFinished(ALobbyCharacter* Character)
     if (!GS) return;
 
 	AMainPlayerState* PS = Character->GetPlayerState<AMainPlayerState>();
-	if (PS)
+	if(!PS) return;
+	if (GS->CurrentGamePhase != EGamePhase::Playing|| GS->CurrentTurnPlayerId != PS->GetPlayerId()) return;
+
+	const bool PlayerAlive = PS->ChangeSubRevolver();
+
+	if (ARevolver* SubRevolver = Character->DeskRevolver)
 	{
-		const bool PlayerAlive = PS->ChangeSubRevolver();
-
-		if (ARevolver* SubRevolver = Character->DeskRevolver)
-		{
-			if (PlayerAlive)
-			{
-				SubRevolver->Multicast_PlayDryFireSound();
-			}
-			else
-			{
-				SubRevolver->Multicast_PlayFireSound();
-			}
-		}
-
 		if (PlayerAlive)
 		{
-			UE_LOG(LogTemp, Warning, TEXT("[GM] Player %d survived by sub revolver after fold montage"), PS->GetPlayerId());
+			SubRevolver->Multicast_PlayDryFireSound();
 		}
 		else
 		{
-			UE_LOG(LogTemp, Warning, TEXT("[GM] Player %d died by sub revolver after fold montage"), PS->GetPlayerId());
-			if (GS->AlivePlayerCount > 0)
-			{
-				--GS->AlivePlayerCount;
-			}
-
-			CheckNext();
-			return;
+			SubRevolver->Multicast_PlayFireSound();
 		}
+	}
+
+	if (PlayerAlive)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[GM] Player %d survived by sub revolver after fold montage"), PS->GetPlayerId());
+	}
+	else
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[GM] Player %d died by sub revolver after fold montage"), PS->GetPlayerId());
+		if (GS->AlivePlayerCount > 0)
+		{
+			--GS->AlivePlayerCount;
+		}
+
+		CheckNext();
+		return;
 	}
 	
     Character->Multicast_PutBackGunMontage(EGunHoldReason::Fold);
@@ -350,12 +350,18 @@ void AMainGameMode::HandlePutBackGunMontageFinished(ALobbyCharacter* Character, 
 
 	if (Reason == EGunHoldReason::Fold)
 	{
+		AMainPlayerState* FoldingPS = Character->GetPlayerState<AMainPlayerState>();
+		if (GS->CurrentGamePhase != EGamePhase::Playing || !FoldingPS
+			|| GS->CurrentTurnPlayerId != FoldingPS->GetPlayerId()) return;
 		CheckNext();
 		return;
 	}
 
 	if (Reason == EGunHoldReason::Win)
 	{
+		if (bGameEnded || GS->CurrentGamePhase != EGamePhase::Result || !CurrentWinnerPS) return;
+		AMainGamePlayerController* WinnerPC = Cast<AMainGamePlayerController>(CurrentWinnerPS->GetOwner());
+		if (!WinnerPC || WinnerPC->GetPawn() != Character) return;
 		Character->ReturnMainRevolverToTableImmediately();
 		bMainRevolverPutBackInProgress = false;
 		FinishMainShotPhase();
