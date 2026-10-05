@@ -20,6 +20,7 @@ void UOptionMenuWidget::SetParentMenu(UUserWidget* InParentMenu)
 void UOptionMenuWidget::NativeConstruct()
 {
 	Super::NativeConstruct();
+	SetIsFocusable(true);
 
 	// SettingSubsystem 캐시
 	SettingSubsystem = GetGameInstance() ? GetGameInstance()->GetSubsystem<USettingSubsystem>() : nullptr;
@@ -31,6 +32,11 @@ void UOptionMenuWidget::NativeConstruct()
 
 	// 플레이어 컨트롤러 캐시
 	PlayerControllerRef = GetOwningPlayer();
+	Button_ExitGame->SetVisibility(
+		Cast<AMainGamePlayerController>(PlayerControllerRef)
+			? ESlateVisibility::Visible
+			: ESlateVisibility::Collapsed);
+	Button_ExitGame->SetIsEnabled(true);
 
 	// --- 모든 UI 이벤트에 C++ 함수 바인딩 ---
 	// 슬라이더
@@ -45,6 +51,8 @@ void UOptionMenuWidget::NativeConstruct()
 	Button_ResetAll->OnClicked.AddDynamic(this, &UOptionMenuWidget::OnResetAllClicked);
 	Button_OK->OnClicked.AddDynamic(this, &UOptionMenuWidget::OnOKClicked);
 	Button_Cancel->OnClicked.AddDynamic(this, &UOptionMenuWidget::OnCancelClicked);
+	Button_ExitGame->OnClicked.AddDynamic(this, &UOptionMenuWidget::OnExitGameClicked);
+
 	// 개별 리셋 버튼
 	Button_ResetMasterVolume->OnClicked.AddDynamic(this, &UOptionMenuWidget::OnResetMasterVolumeClicked);
 	Button_ResetMouseSensitivity->OnClicked.AddDynamic(this, &UOptionMenuWidget::OnResetMouseSensitivityClicked);
@@ -89,6 +97,7 @@ void UOptionMenuWidget::NativeDestruct()
 	if (Button_ResetAll) Button_ResetAll->OnClicked.RemoveAll(this);
 	if (Button_OK)       Button_OK->OnClicked.RemoveAll(this);
 	if (Button_Cancel)   Button_Cancel->OnClicked.RemoveAll(this);
+	if (Button_ExitGame) Button_ExitGame->OnClicked.RemoveAll(this);
 
 	// 개별 리셋 버튼
 	if (Button_ResetMasterVolume)     Button_ResetMasterVolume->OnClicked.RemoveAll(this);
@@ -109,11 +118,14 @@ FReply UOptionMenuWidget::NativeOnKeyDown(const FGeometry& InGeometry, const FKe
 	// ESC 키가 눌렸는지 확인
 	if (InKeyEvent.GetKey() == EKeys::Escape)
 	{
+#if WITH_EDITOR
+		if (!InKeyEvent.IsShiftDown()) return FReply::Unhandled();
+#endif
 		UE_LOG(LogTemp, Log, TEXT("OptionMenuWidget: ESC key pressed."));
 
 		// '확인' 버튼을 누른 것과 동일하게 동작
 		// (변경 사항이 있으면 팝업을 띄우고, 없으면 그냥 닫습니다)
-		OnOKClicked();
+		HandleEscape();
 
 		// [중요] ESC 키 입력을 '처리했음(Handled)'으로 반환
 		// 이렇게 해야 입력이 PlayerController로 전파되어
@@ -123,6 +135,11 @@ FReply UOptionMenuWidget::NativeOnKeyDown(const FGeometry& InGeometry, const FKe
 
 	// 다른 키가 눌렸다면 '처리 안 함(Unhandled)'으로 반환
 	return FReply::Unhandled();
+}
+
+void UOptionMenuWidget::HandleEscape()
+{
+	OnOKClicked();
 }
 
 
@@ -146,13 +163,12 @@ FReply UOptionMenuWidget::NativeOnMouseButtonDown(const FGeometry& InGeometry, c
 	// 이 위젯에게 다시 키보드 포커스를 강제로 설정
 	if (PlayerControllerRef)
 	{
-		//// SWidget에 대한 포인터를 가져옵니다.
-		//TSharedPtr<SWidget> SafeWidget = this->TakeWidget();
-		//if (SafeWidget.IsValid())
-		//{
-		//	// "이 위젯에 키보드 포커스를 설정하라"
-		//	FSlateApplication::Get().SetKeyboardFocus(SafeWidget);
-		//}
+		if (Cast<AMainGamePlayerController>(PlayerControllerRef))
+		{
+			// The controller already selected GameAndUI; a background click only restores focus.
+			return FReply::Handled().SetUserFocus(TakeWidget());
+		}
+
 		FInputModeUIOnly InputModeData;
 		InputModeData.SetWidgetToFocus(this->TakeWidget()); // 포커스를 이 위젯으로
 		PlayerControllerRef->SetInputMode(InputModeData);
@@ -320,6 +336,14 @@ void UOptionMenuWidget::OnCancelClicked()
 	CloseMenu(false);
 }
 
+void UOptionMenuWidget::OnExitGameClicked()
+{
+	if (AMainGamePlayerController* MainGamePC = Cast<AMainGamePlayerController>(PlayerControllerRef))
+	{
+		MainGamePC->ShowExitConfirmation();
+	}
+}
+
 
 // CloseMenu 로직
 void UOptionMenuWidget::CloseMenu(bool bSaveChanges)
@@ -341,6 +365,9 @@ void UOptionMenuWidget::CloseMenu(bool bSaveChanges)
 		{
 			return;
 		}
+		RemoveFromParent();
+		MainGamePC->ResumeAfterOptionsMenu();
+		return;
 	}
 
 	if (UMainMenuWidget* MainMenu = Cast<UMainMenuWidget>(ParentMenu))

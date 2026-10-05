@@ -20,12 +20,15 @@
 #include "PlayerState/MainPlayerState.h"
 #include "GameInstanceSubsystem/ConnectivitySubsystem.h"
 #include "GameInstanceSubsystem/IndianBabGameInstance.h"
+#include "GameInstanceSubsystem/SessionSubsystem.h"
 #include "Engine/GameInstance.h"
 #include "Blueprint/UserWidget.h"
 #include "Components/WidgetComponent.h"
 #include "Components/WidgetSwitcher.h"
 #include "Widget/GameResultWidget.h"
 #include "Widget/ReadyWidget.h"
+#include "Widget/ExitConfirmWidget.h"
+#include "Widget/OptionMenuWidget.h"
 #include "Game/MainGameState.h"
 #include "UObject/ConstructorHelpers.h"
 #include "Engine/World.h"
@@ -38,6 +41,10 @@ AMainGamePlayerController::AMainGamePlayerController()
 {
     static ConstructorHelpers::FClassFinder<UReadyWidget> ReadyBP(TEXT("/Game/Blueprint/Widget/WBP_Ready"));
     if (ReadyBP.Succeeded()) PCReadyWidgetClass = ReadyBP.Class;
+	static ConstructorHelpers::FClassFinder<UOptionMenuWidget> OptionsBP(TEXT("/Game/Blueprint/Widget/WBP_OptionMenu"));
+	if (OptionsBP.Succeeded()) OptionMenuWidgetClass = OptionsBP.Class;
+	static ConstructorHelpers::FClassFinder<UExitConfirmWidget> ExitConfirmBP(TEXT("/Game/Blueprint/Widget/WBP_ConfirmExit"));
+	if (ExitConfirmBP.Succeeded()) ExitConfirmWidgetClass = ExitConfirmBP.Class;
 	PlayerCameraManagerClass = ALobbyCameraManager::StaticClass();
 }
 
@@ -72,11 +79,6 @@ void AMainGamePlayerController::BeginPlay()
     // 자동 착석에 맞게 진입
     ApplyLocalPlayMode();
 
-    if (USettingSubsystem* SettingSS = GetGameInstance()->GetSubsystem<USettingSubsystem>())
-    {
-        LookSensitivity = SettingSS->GetMouseSensitivity();
-    }
-
     // 자동 착석이므로 주석 처리
 	// FInputModeGameOnly Mode;
 	// SetInputMode(Mode);
@@ -102,6 +104,12 @@ void AMainGamePlayerController::BeginPlay()
 
 void AMainGamePlayerController::EndPlay(const EEndPlayReason::Type EndPlayReason)
 {
+    DismissExitConfirmation();
+	if (OptionMenuInstance)
+	{
+		OptionMenuInstance->RemoveFromParent();
+		OptionMenuInstance = nullptr;
+	}
     if (PCReadyWidgetInstance)
     {
         PCReadyWidgetInstance->RemoveFromParent();
@@ -123,6 +131,170 @@ void AMainGamePlayerController::EndPlay(const EEndPlayReason::Type EndPlayReason
     Super::EndPlay(EndPlayReason);
 }
 
+UWidgetComponent* AMainGamePlayerController::FindVRMenuComponent() const
+{
+	const ALobbyVRCharacter* VRCharacter = Cast<ALobbyVRCharacter>(GetPawn());
+	if (!VRCharacter || !VRCharacter->IsLocallyControlled()) return nullptr;
+
+	TArray<UWidgetComponent*> Components;
+	VRCharacter->GetComponents<UWidgetComponent>(Components);
+	for (UWidgetComponent* Component : Components)
+	{
+		if (Component && Component->GetName().Contains(TEXT("VRMenuWidget"), ESearchCase::IgnoreCase))
+		{
+			return Component;
+		}
+	}
+	return nullptr;
+}
+
+void AMainGamePlayerController::FocusPCModal(UUserWidget* Widget)
+{
+	FInputModeGameAndUI Mode;
+	Mode.SetWidgetToFocus(Widget->TakeWidget());
+	Mode.SetLockMouseToViewportBehavior(EMouseLockMode::DoNotLock);
+	Mode.SetHideCursorDuringCapture(false);
+	SetInputMode(Mode);
+	bShowMouseCursor = true;
+	bEnableClickEvents = true;
+	bEnableMouseOverEvents = true;
+	SetIgnoreLookInput(true);
+}
+
+void AMainGamePlayerController::ShowOptionsMenu()
+{
+#if WITH_EDITOR
+	// In PIE the options shortcut is Shift+Escape; packaged builds use Escape.
+	if (!IsInputKeyDown(EKeys::LeftShift) && !IsInputKeyDown(EKeys::RightShift)) return;
+#endif
+	if (!IsLocalPlayerController() || bExitRequested || ExitConfirmWidgetInstance)
+	{
+		return;
+	}
+
+	if (bUseVRPlayMode || Cast<ALobbyVRCharacter>(GetPawn()))
+	{
+		// VR 옵션은 기존 손 메뉴와 설정 버튼으로 엽니다.
+		return;
+	}
+
+	if (!OptionMenuWidgetClass)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("MainGamePC: OptionMenuWidgetClass is not assigned."));
+		return;
+	}
+	if (!OptionMenuInstance)
+	{
+		OptionMenuInstance = CreateWidget<UOptionMenuWidget>(this, OptionMenuWidgetClass);
+	}
+	if (!OptionMenuInstance) return;
+	if (OptionMenuInstance->IsInViewport())
+	{
+		OptionMenuInstance->HandleEscape();
+		return;
+	}
+
+	OptionMenuInstance->AddToViewport(150);
+	FocusPCModal(OptionMenuInstance);
+}
+
+void AMainGamePlayerController::ShowExitConfirmation()
+{
+    if (!IsLocalPlayerController() || bExitRequested)
+    {
+        return;
+    }
+
+    if (!ExitConfirmWidgetClass)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("MainGamePC: ExitConfirmWidgetClass is not assigned."));
+        return;
+    }
+
+    if (!ExitConfirmWidgetInstance)
+    {
+        ExitConfirmWidgetInstance = CreateWidget<UExitConfirmWidget>(this, ExitConfirmWidgetClass);
+    }
+    if (!ExitConfirmWidgetInstance || ExitConfirmWidgetInstance->IsInViewport()
+		|| ExitConfirmWorldComponent) return;
+
+    bRMBHeld = false;
+	if (bUseVRPlayMode || Cast<ALobbyVRCharacter>(GetPawn()))
+	{
+		ExitConfirmWorldComponent = FindVRMenuComponent();
+		if (!ExitConfirmWorldComponent)
+		{
+			ExitConfirmWidgetInstance = nullptr;
+			return;
+		}
+		PreviousVRMenuWidget = ExitConfirmWorldComponent->GetUserWidgetObject();
+		if (!PreviousVRMenuWidget)
+		{
+			ExitConfirmWorldComponent = nullptr;
+			ExitConfirmWidgetInstance = nullptr;
+			return;
+		}
+		ExitConfirmWorldComponent->SetWidget(ExitConfirmWidgetInstance);
+		ExitConfirmWorldComponent->SetVisibility(true, true);
+		ExitConfirmWorldComponent->SetHiddenInGame(false);
+		ExitConfirmWorldComponent->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
+		ExitConfirmWorldComponent->SetCollisionResponseToChannel(ECC_Visibility, ECR_Block);
+		return;
+	}
+    ExitConfirmWidgetInstance->AddToViewport(200);
+	FocusPCModal(ExitConfirmWidgetInstance);
+}
+
+void AMainGamePlayerController::DismissExitConfirmation()
+{
+	if (ExitConfirmWorldComponent && PreviousVRMenuWidget)
+	{
+		ExitConfirmWorldComponent->SetWidget(PreviousVRMenuWidget);
+	}
+	ExitConfirmWorldComponent = nullptr;
+	PreviousVRMenuWidget = nullptr;
+    if (ExitConfirmWidgetInstance)
+    {
+        ExitConfirmWidgetInstance->RemoveFromParent();
+        ExitConfirmWidgetInstance = nullptr;
+    }
+}
+
+void AMainGamePlayerController::CancelExitFromMainGame()
+{
+    if (!IsLocalPlayerController() || bExitRequested) return;
+    DismissExitConfirmation();
+	if (bUseVRPlayMode || Cast<ALobbyVRCharacter>(GetPawn())) return;
+	if (OptionMenuInstance && OptionMenuInstance->IsInViewport())
+	{
+		FocusPCModal(OptionMenuInstance);
+		return;
+	}
+    ApplyLocalPlayMode();
+}
+
+void AMainGamePlayerController::ResumeAfterOptionsMenu()
+{
+	if (IsLocalPlayerController()) ApplyLocalPlayMode();
+}
+
+void AMainGamePlayerController::ConfirmExitFromMainGame()
+{
+    if (!IsLocalPlayerController() || bExitRequested) return;
+    bExitRequested = true;
+    DismissExitConfirmation();
+	const FString MainMenuMapPath = TEXT("/Game/Maps/MainMenu/MainMenu");
+	if (UGameInstance* GameInstance = GetGameInstance())
+	{
+		if (USessionSubsystem* SessionSubsystem = GameInstance->GetSubsystem<USessionSubsystem>())
+		{
+			SessionSubsystem->ReturnToMainMenuAfterSessionCleanup(MainMenuMapPath);
+			return;
+		}
+	}
+	ClientTravel(MainMenuMapPath, ETravelType::TRAVEL_Absolute);
+}
+
 // 인터넷 끊김 또는 NetDriver disconnect (ForceTriggerLost 경유)
 void AMainGamePlayerController::HandleConnectivityLost()
 {
@@ -142,11 +314,20 @@ void AMainGamePlayerController::HandleConnectivityLost()
         OfflineWidgetInstance->AddToViewport(100); // ZOrder 높게 — 인게임 HUD 위에 표시
 
         // 오프라인 모달에만 포커스 — 인게임 입력 차단
-        FInputModeUIOnly InputModeData;
+        FInputModeGameAndUI InputModeData;
         InputModeData.SetWidgetToFocus(OfflineWidgetInstance->TakeWidget());
         InputModeData.SetLockMouseToViewportBehavior(EMouseLockMode::DoNotLock);
+        InputModeData.SetHideCursorDuringCapture(false);
         SetInputMode(InputModeData);
         bShowMouseCursor = true;
+		if (ExitConfirmWidgetInstance && ExitConfirmWidgetInstance->IsInViewport())
+		{
+			FocusPCModal(ExitConfirmWidgetInstance);
+		}
+		else if (OptionMenuInstance && OptionMenuInstance->IsInViewport())
+		{
+			FocusPCModal(OptionMenuInstance);
+		}
     }
 }
 
@@ -158,9 +339,18 @@ void AMainGamePlayerController::HandleConnectivityRestored()
         OfflineWidgetInstance->RemoveFromParent();
 
         // 인게임 입력 모드 복구 — 카메라 모드 기본 (BeginPlay 와 동일)
-        FInputModeGameOnly Mode;
-        SetInputMode(Mode);
-        bShowMouseCursor = false;
+		if (ExitConfirmWidgetInstance && ExitConfirmWidgetInstance->IsInViewport())
+		{
+			FocusPCModal(ExitConfirmWidgetInstance);
+		}
+		else if (OptionMenuInstance && OptionMenuInstance->IsInViewport())
+		{
+			FocusPCModal(OptionMenuInstance);
+		}
+		else
+		{
+			ApplyLocalPlayMode();
+		}
     }
 }
 
@@ -174,6 +364,7 @@ void AMainGamePlayerController::SetupInputComponent()
     if (IsLocalPlayerController() && InputComponent)
     {
         InputComponent->BindKey(EKeys::LeftMouseButton, IE_Pressed, this, &AMainGamePlayerController::OnPCMainShotPressed);
+        InputComponent->BindKey(EKeys::Escape, IE_Pressed, this, &AMainGamePlayerController::ShowOptionsMenu).bConsumeInput = false;
     }
 
 	if (!IsLocalPlayerController()) 
@@ -450,7 +641,11 @@ void AMainGamePlayerController::TrySendSteamNickname()
 // 모드 확정/빙의 순서가 달라도 VR 또는 미생성 Pawn에 PC 입력을 적용하지 않습니다.
 bool AMainGamePlayerController::CanProcessPCInput() const
 {
-    return IsLocalController() && !bUseVRPlayMode && Cast<ALobbyPCCharacter>(GetPawn()) != nullptr;
+    return IsLocalController() && !bUseVRPlayMode && Cast<ALobbyPCCharacter>(GetPawn()) != nullptr
+        && !(OptionMenuInstance && OptionMenuInstance->IsInViewport())
+        && !(ExitConfirmWidgetInstance && ExitConfirmWidgetInstance->IsInViewport())
+        && !(OfflineWidgetInstance && OfflineWidgetInstance->IsInViewport())
+        && !(PCResultWidgetInstance && PCResultWidgetInstance->IsInViewport());
 }
 
 void AMainGamePlayerController::OnMainGameLook(const FInputActionValue& Value)
@@ -458,7 +653,7 @@ void AMainGamePlayerController::OnMainGameLook(const FInputActionValue& Value)
     if (!CanProcessPCInput() || !bRMBHeld) return;
     if (ALobbyPCCharacter* PCCharacter = Cast<ALobbyPCCharacter>(GetPawn()))
     {
-        PCCharacter->Look(Value.Get<FVector2D>(), LookSensitivity);
+		PCCharacter->Look(Value.Get<FVector2D>(), LookSensitivity);
     }
 }
 
@@ -515,7 +710,7 @@ void AMainGamePlayerController::OnLobbyLook(const FInputActionValue& Value)
     if (!CanProcessPCInput()) return;
     if (ALobbyPCCharacter* PCCharacter = Cast<ALobbyPCCharacter>(GetPawn()))
     {
-        PCCharacter->Look(Value.Get<FVector2D>(), LookSensitivity);
+		PCCharacter->Look(Value.Get<FVector2D>(), LookSensitivity);
     }
 }
 
@@ -742,110 +937,76 @@ void AMainGamePlayerController::OnMenuToggleLeft(const FInputActionValue& Value)
 		return;
 	}
 
-	TArray<UWidgetComponent*> WidgetComponents;
-	VRCharacter->GetComponents<UWidgetComponent>(WidgetComponents);
-
-	for (UWidgetComponent* WidgetComponent : WidgetComponents)
+	UWidgetComponent* WidgetComponent = FindVRMenuComponent();
+	if (!WidgetComponent)
 	{
-		if (!WidgetComponent)
-		{
-			continue;
-		}
-
-		const FString ComponentName = WidgetComponent->GetName();
-		const bool bIsMenuWidget =
-			ComponentName.Contains(TEXT("VRMenuWidget"), ESearchCase::IgnoreCase);
-
-		if (!bIsMenuWidget)
-		{
-			continue;
-		}
-
-		WidgetComponent->InitWidget();
-
-		UUserWidget* MasterMenu = WidgetComponent->GetUserWidgetObject();
-		UWidget* WidgetMenuPage = MasterMenu
-			? MasterMenu->GetWidgetFromName(TEXT("WidgetMenu"))
-			: nullptr;
-		UWidgetSwitcher* MenuSwitcher = WidgetMenuPage
-			? Cast<UWidgetSwitcher>(WidgetMenuPage->GetParent())
-			: nullptr;
-
-		if (!MasterMenu || !WidgetMenuPage || !MenuSwitcher)
-		{
-			UE_LOG(LogTemp, Warning,
-				TEXT("[VR UI] Failed to open WidgetMenu. Component=%s Master=%s Page=%s Switcher=%s"),
-				*ComponentName,
-				*GetNameSafe(MasterMenu),
-				*GetNameSafe(WidgetMenuPage),
-				*GetNameSafe(MenuSwitcher));
-			return;
-		}
-
-		const bool bMenuCurrentlyOpen =
-			WidgetComponent->IsVisible() &&
-			!WidgetComponent->bHiddenInGame &&
-			MenuSwitcher->GetActiveWidget() == WidgetMenuPage &&
-			WidgetMenuPage->IsVisible();
-		const bool bShowMenu = !bMenuCurrentlyOpen;
-
-		if (bShowMenu)
-		{
-			// A button may have hidden this page or switched away from it.
-			// Restore both states whenever the menu is opened again.
-			WidgetMenuPage->SetVisibility(ESlateVisibility::SelfHitTestInvisible);
-			MenuSwitcher->SetActiveWidget(WidgetMenuPage);
-		}
-
-		WidgetComponent->SetVisibility(bShowMenu, true);
-		WidgetComponent->SetHiddenInGame(!bShowMenu);
-		WidgetComponent->SetCollisionEnabled(
-			bShowMenu ? ECollisionEnabled::QueryOnly : ECollisionEnabled::NoCollision);
-		WidgetComponent->SetCollisionResponseToAllChannels(ECR_Ignore);
-		WidgetComponent->SetCollisionResponseToChannel(
-			ECC_Visibility,
-			bShowMenu ? ECR_Block : ECR_Ignore);
-		WidgetComponent->SetGenerateOverlapEvents(false);
-
-		UE_LOG(LogTemp, Warning, TEXT("[VR UI] %s %s"),
-			*ComponentName,
-			bShowMenu ? TEXT("shown") : TEXT("hidden"));
+		UE_LOG(LogTemp, Warning, TEXT("[VR UI] Menu widget component not found on %s"), *GetNameSafe(VRCharacter));
 		return;
 	}
 
-	UE_LOG(LogTemp, Warning, TEXT("[VR UI] Menu widget component not found on %s"), *GetNameSafe(VRCharacter));
+	WidgetComponent->InitWidget();
+	UUserWidget* MasterMenu = WidgetComponent->GetUserWidgetObject();
+	UWidget* WidgetMenuPage = MasterMenu
+		? MasterMenu->GetWidgetFromName(TEXT("WidgetMenu"))
+		: nullptr;
+	UWidgetSwitcher* MenuSwitcher = WidgetMenuPage
+		? Cast<UWidgetSwitcher>(WidgetMenuPage->GetParent())
+		: nullptr;
+
+	if (!MasterMenu || !WidgetMenuPage || !MenuSwitcher)
+	{
+		UE_LOG(LogTemp, Warning,
+			TEXT("[VR UI] Failed to open WidgetMenu. Component=%s Master=%s Page=%s Switcher=%s"),
+			*WidgetComponent->GetName(),
+			*GetNameSafe(MasterMenu),
+			*GetNameSafe(WidgetMenuPage),
+			*GetNameSafe(MenuSwitcher));
+		return;
+	}
+
+	const bool bMenuCurrentlyOpen =
+		WidgetComponent->IsVisible() &&
+		!WidgetComponent->bHiddenInGame &&
+		MenuSwitcher->GetActiveWidget() == WidgetMenuPage &&
+		WidgetMenuPage->IsVisible();
+	const bool bShowMenu = !bMenuCurrentlyOpen;
+
+	if (bShowMenu)
+	{
+		// A button may have hidden this page or switched away from it.
+		// Restore both states whenever the menu is opened again.
+		WidgetMenuPage->SetVisibility(ESlateVisibility::SelfHitTestInvisible);
+		MenuSwitcher->SetActiveWidget(WidgetMenuPage);
+	}
+
+	WidgetComponent->SetVisibility(bShowMenu, true);
+	WidgetComponent->SetHiddenInGame(!bShowMenu);
+	WidgetComponent->SetCollisionEnabled(
+		bShowMenu ? ECollisionEnabled::QueryOnly : ECollisionEnabled::NoCollision);
+	WidgetComponent->SetCollisionResponseToAllChannels(ECR_Ignore);
+	WidgetComponent->SetCollisionResponseToChannel(
+		ECC_Visibility,
+		bShowMenu ? ECR_Block : ECR_Ignore);
+	WidgetComponent->SetGenerateOverlapEvents(false);
+
+	UE_LOG(LogTemp, Warning, TEXT("[VR UI] %s %s"),
+		*WidgetComponent->GetName(),
+		bShowMenu ? TEXT("shown") : TEXT("hidden"));
 }
 
 bool AMainGamePlayerController::CloseVRMenu()
 {
-	ALobbyVRCharacter* VRCharacter = Cast<ALobbyVRCharacter>(GetPawn());
-	if (!VRCharacter || !VRCharacter->IsLocallyControlled())
-	{
-		return false;
-	}
+	UWidgetComponent* WidgetComponent = FindVRMenuComponent();
+	if (!WidgetComponent) return false;
 
-	TArray<UWidgetComponent*> WidgetComponents;
-	VRCharacter->GetComponents<UWidgetComponent>(WidgetComponents);
+	WidgetComponent->SetVisibility(false, true);
+	WidgetComponent->SetHiddenInGame(true);
+	WidgetComponent->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+	WidgetComponent->SetCollisionResponseToAllChannels(ECR_Ignore);
+	WidgetComponent->SetGenerateOverlapEvents(false);
 
-	for (UWidgetComponent* WidgetComponent : WidgetComponents)
-	{
-		if (!WidgetComponent ||
-			!WidgetComponent->GetName().Contains(TEXT("VRMenuWidget"), ESearchCase::IgnoreCase))
-		{
-			continue;
-		}
-
-		WidgetComponent->SetVisibility(false, true);
-		WidgetComponent->SetHiddenInGame(true);
-		WidgetComponent->SetCollisionEnabled(ECollisionEnabled::NoCollision);
-		WidgetComponent->SetCollisionResponseToAllChannels(ECR_Ignore);
-		WidgetComponent->SetGenerateOverlapEvents(false);
-
-		UE_LOG(LogTemp, Warning, TEXT("[VR UI] VR menu closed; returning to gameplay"));
-		return true;
-	}
-
-	return false;
+	UE_LOG(LogTemp, Warning, TEXT("[VR UI] VR menu closed; returning to gameplay"));
+	return true;
 }
 
 // 기존 결과 위젯을 PC 화면에 표시하고 마우스로 조작하게 합니다.
@@ -889,10 +1050,20 @@ void AMainGamePlayerController::Client_ShowPCResultWidget_Implementation(const F
     PCResultWidgetInstance->SetAnchorsInViewport(FAnchors(0.5f, 0.5f));
     PCResultWidgetInstance->SetAlignmentInViewport(FVector2D(0.5f, 0.5f));
 
-    FInputModeUIOnly Mode;
+    FInputModeGameAndUI Mode;
     Mode.SetWidgetToFocus(PCResultWidgetInstance->TakeWidget());
+    Mode.SetLockMouseToViewportBehavior(EMouseLockMode::DoNotLock);
+    Mode.SetHideCursorDuringCapture(false);
     SetInputMode(Mode);
     bShowMouseCursor = true;
+	if (ExitConfirmWidgetInstance && ExitConfirmWidgetInstance->IsInViewport())
+	{
+		FocusPCModal(ExitConfirmWidgetInstance);
+	}
+	else if (OptionMenuInstance && OptionMenuInstance->IsInViewport())
+	{
+		FocusPCModal(OptionMenuInstance);
+	}
 }
 
 void AMainGamePlayerController::OnDebugRightTriggerPressed()
@@ -980,6 +1151,10 @@ void AMainGamePlayerController::Server_SetPlayMode_Implementation(bool bUseVR)
 void AMainGamePlayerController::ApplyLocalPlayMode()
 {
     if (!IsLocalController()) return;
+	if (USettingSubsystem* Settings = GetGameInstance()->GetSubsystem<USettingSubsystem>())
+	{
+		LookSensitivity = Settings->GetMouseSensitivity();
+	}
     ApplyMainGameMappingContext();
     bRMBHeld = false;
     ResetIgnoreLookInput();
