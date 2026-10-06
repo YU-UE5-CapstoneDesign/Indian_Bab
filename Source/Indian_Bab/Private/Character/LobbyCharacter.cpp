@@ -501,12 +501,10 @@ void ALobbyCharacter::Multicast_PutBackGunMontage_Implementation(EGunHoldReason 
 
 	AnimInstance->Montage_Play(MontageToPlay, 1.0f);
 
-	if (HasAuthority())
-	{
-		FOnMontageEnded EndDelegate;
-		EndDelegate.BindUObject(this, &ALobbyCharacter::OnPutBackGunMontageEnded);
-		AnimInstance->Montage_SetEndDelegate(EndDelegate, MontageToPlay);
-	}
+	FOnMontageEnded EndDelegate;
+	EndDelegate.BindUObject(this, &ALobbyCharacter::OnPutBackGunMontageEnded);
+	AnimInstance->Montage_SetEndDelegate(EndDelegate, MontageToPlay);
+	
 }
 
 void ALobbyCharacter::OnRep_GunHoldReason()
@@ -677,10 +675,10 @@ void ALobbyCharacter::OnGrabGunMontageEnded(UAnimMontage* Montage, bool bInterru
 
 void ALobbyCharacter::OnPutBackGunMontageEnded(UAnimMontage* Montage, bool bInterrupted)
 {
+	bIsPuttingBackGun = false;
+
 	if (bInterrupted) return;
 	if (!HasAuthority()) return;
-
-	bIsPuttingBackGun = false;
 
 #if WITH_SERVER_CODE
 	AMainGameMode* GM = GetWorld() ? GetWorld()->GetAuthGameMode<AMainGameMode>() : nullptr;

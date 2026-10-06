@@ -163,6 +163,7 @@ void ALobbyPCCharacter::Multicast_ClearPCMainRevolver_Implementation()
 	ClearHeldRevolverMeshes();
 	bMainRevolverGrabbed = false;
 	bShowMainShotAimLine = false;
+	bIsPuttingBackGun = false;
 	GunHoldReason = EGunHoldReason::None;
 }
 
