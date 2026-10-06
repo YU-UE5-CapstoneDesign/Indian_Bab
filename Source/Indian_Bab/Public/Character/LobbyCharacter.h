@@ -157,6 +157,9 @@ public:
 	UFUNCTION()
 	void UpdateCardMesh();
 
+	// 카드가 보이고 덧셈 토큰을 선택한 플레이어에게 토큰 메시를 표시합니다.
+	void UpdateAddTokenDisplay();
+
 	UFUNCTION(Server, Unreliable)
 	void Server_UpdateAim(FRotator NewAim);
 
@@ -239,6 +242,9 @@ public:
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Card")
 	TObjectPtr<UStaticMeshComponent> CardDisplayMesh;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Card")
+	TObjectPtr<UStaticMeshComponent> AddTokenDisplayMesh;
 
 	// 자기 서브 리볼버 카운트 업데이트 함수
 	void UpdateDeskRevolverCount(int32 TriggerCount);

@@ -77,7 +77,6 @@ public:
 	int32 GetRemainingAddTokenCount() const;
 
 	int32 GetCardComparisonValue() const;
-	bool IsAddTokenAppliedThisRound() const { return bAddTokenAppliedThisRound; }
 
 	// 처음 서브 리볼버 설정
 	void SetInitSubRevolver();
@@ -118,8 +117,5 @@ protected:
 
 	UPROPERTY(ReplicatedUsing = OnRep_AddTokenState, BlueprintReadOnly, Category = "PlayerState|AdditionToken")
 	bool bAddTokenSelected;
-
-	// 최종 비교 중 서버에서만 사용하는 라운드 임시 상태입니다.
-	bool bAddTokenAppliedThisRound;
 
 };

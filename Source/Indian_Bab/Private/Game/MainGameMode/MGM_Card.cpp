@@ -72,6 +72,7 @@ void AMainGameMode::CheckPlayerCard()
 {
 	AMainGameState* GS = GetGameState<AMainGameState>();
     if (!GS) return;
+	if (GS->CurrentGamePhase != EGamePhase::Playing || CurrentWinnerPS) return;
 
 	// 최종 비교에 실제로 참가하는 플레이어만 예약한 토큰을 소모합니다.
 	// 폴드했거나 사망한 플레이어의 예약은 취소되고 사용 횟수는 유지됩니다.
@@ -88,14 +89,6 @@ void AMainGameMode::CheckPlayerCard()
 
     CurrentWinnerPS = MaxCardPlayer();
 	if(!CurrentWinnerPS) return;
-
-    UE_LOG(LogTemp, Warning,
-        TEXT("[CardCompare] Winner Player=%d Card=%s Base=%d AddToken=%s Effective=%d"),
-        CurrentWinnerPS->GetPlayerId(),
-        *CurrentWinnerPS->GetMyCard().ToDisplayString(),
-        CurrentWinnerPS->GetMyCard().Value,
-        CurrentWinnerPS->IsAddTokenAppliedThisRound() ? TEXT("ON") : TEXT("OFF"),
-        CurrentWinnerPS->GetCardComparisonValue());
 
 	// 승자를 메인 리볼버 사수이자 다음 라운드 선 플레이어로 지정
 	// 미리 게임 턴 바꿔서 색깔 변경하기 위해서
@@ -150,7 +143,7 @@ void AMainGameMode::CheckPlayerCard()
 	WinnerCharacter->SetActiveRevolver(Revolver);
 	WinnerCharacter->BeginManualMainRevolverPhase(!Cast<ALobbyPCCharacter>(WinnerCharacter));
 
-	// vr/pc 짚는 모드 분할
+	// vr/pc 집는 모드 분할
 	if(GS->CurrentBulletCount > 0)
 	{
 		if (ALobbyVRCharacter* WinnerVRCharacter = Cast<ALobbyVRCharacter>(WinnerCharacter))
@@ -191,16 +184,7 @@ TObjectPtr<AMainPlayerState> AMainGameMode::MaxCardPlayer()
 
         const FCardData CurrentCard = PS->GetMyCard();
         const int32 CurrentComparisonValue = PS->GetCardComparisonValue();
-        const bool bHigher = !bFound || MainCardManager->IsCardHigher(
-            CurrentCard, CurrentComparisonValue, MaxCard, MaxComparisonValue);
-
-        UE_LOG(LogTemp, Warning,
-            TEXT("[CardCompare] Player=%d Card=%s Base=%d AddToken=%s Effective=%d"),
-            PS->GetPlayerId(),
-            *CurrentCard.ToDisplayString(),
-            CurrentCard.Value,
-            PS->IsAddTokenAppliedThisRound() ? TEXT("ON") : TEXT("OFF"),
-            CurrentComparisonValue);
+        const bool bHigher = !bFound || MainCardManager->IsCardHigher(CurrentCard, CurrentComparisonValue, MaxCard, MaxComparisonValue);
 
         if (bHigher)
         {

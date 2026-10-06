@@ -12,6 +12,7 @@
 #include "Actor/SeatActor.h"
 #include "Actor/Revolver.h"
 #include "Components/SphereComponent.h"
+#include "Components/StaticMeshComponent.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "Game/MainGameMode.h"
 #include "Game/MainGameState.h"
@@ -142,6 +143,13 @@ ALobbyCharacter::ALobbyCharacter()
 	CardDisplayMesh->SetVisibility(false);
 	CardDisplayMesh->SetRelativeLocation(FVector(0.f, 0.f, 100.f));
 	CardDisplayMesh->SetRelativeScale3D(FVector(0.1f));
+
+	// 메시와 재질, 카드 앞쪽 위치는 캐릭터 BP에서 지정합니다.
+	AddTokenDisplayMesh = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("AddTokenDisplayMesh"));
+	AddTokenDisplayMesh->SetupAttachment(CardDisplayMesh);
+	AddTokenDisplayMesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+	AddTokenDisplayMesh->SetCastShadow(false);
+	AddTokenDisplayMesh->SetVisibility(false);
 }
 
 // Called when the game starts or when spawned
@@ -174,6 +182,9 @@ void ALobbyCharacter::BindPlayerStateDelegates()
 	PS->OnCardChanged.RemoveAll(this);
 	PS->OnCardChanged.AddUObject(this, &ALobbyCharacter::UpdateCardWidget);
 	PS->OnCardChanged.AddUObject(this, &ALobbyCharacter::UpdateCardMesh);
+	PS->OnCardChanged.AddUObject(this, &ALobbyCharacter::UpdateAddTokenDisplay);
+	PS->OnAddTokenStateChanged.RemoveAll(this);
+	PS->OnAddTokenStateChanged.AddUObject(this, &ALobbyCharacter::UpdateAddTokenDisplay);
 	PS->OnTriggerCountChanged.RemoveAll(this);
 	PS->OnTriggerCountChanged.AddUObject(this, &ALobbyCharacter::UpdateDeskRevolverCount);
 
@@ -184,6 +195,7 @@ void ALobbyCharacter::BindPlayerStateDelegates()
 	UpdateNameWidget();
 	UpdateCardWidget();
 	UpdateCardMesh();
+	UpdateAddTokenDisplay();
 	UpdatePlayerNameColor();
 
 	if (IsValid(DeskRevolver))
@@ -286,6 +298,16 @@ void ALobbyCharacter::UpdateCardMesh()
 	UStaticMesh* LoadedCardMesh = Card.CardMesh.LoadSynchronous();
 	CardDisplayMesh->SetStaticMesh(LoadedCardMesh);
 	CardDisplayMesh->SetVisibility(IsValid(LoadedCardMesh));
+}
+
+void ALobbyCharacter::UpdateAddTokenDisplay()
+{
+	if (!AddTokenDisplayMesh || !CardDisplayMesh) return;
+
+	const AMainPlayerState* PS = GetPlayerState<AMainPlayerState>();
+	const bool bShowToken = PS && !IsLocallyControlled()
+		&& CardDisplayMesh->IsVisible() && PS->IsAddTokenSelected();
+	AddTokenDisplayMesh->SetVisibility(bShowToken);
 }
 
 void ALobbyCharacter::UpdatePlayerNameColor()

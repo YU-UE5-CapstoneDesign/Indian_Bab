@@ -9,7 +9,6 @@ AMainPlayerState::AMainPlayerState()
     TotalTriggerCount = 0;
     AddTokenUsedCount = 0;
     bAddTokenSelected = false;
-    bAddTokenAppliedThisRound = false;
 }
 
 void AMainPlayerState::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
@@ -24,7 +23,7 @@ void AMainPlayerState::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& Out
     DOREPLIFETIME(AMainPlayerState, SteamNickname);
     DOREPLIFETIME(AMainPlayerState, MyCard);
     DOREPLIFETIME_CONDITION(AMainPlayerState, AddTokenUsedCount, COND_OwnerOnly);
-    DOREPLIFETIME_CONDITION(AMainPlayerState, bAddTokenSelected, COND_OwnerOnly);
+    DOREPLIFETIME(AMainPlayerState, bAddTokenSelected);
 }
 
 // 닉네임 Set/Get 함수
@@ -65,30 +64,21 @@ bool AMainPlayerState::SetAddTokenSelected(bool bSelected)
 
 bool AMainPlayerState::CommitAddTokenForComparison()
 {
-    // 같은 최종 비교가 중복 호출 방지
-    if (bAddTokenAppliedThisRound)
-    {
-        bAddTokenSelected = false;
-        return false;
-    }
-
     const bool bHasComparableCard = MyCard.Value > 0 || MyCard.IsJoker();
-    bAddTokenAppliedThisRound = bAddTokenSelected && isAlive && !isFold && bHasComparableCard && AddTokenUsedCount < MaxAddTokenUses;
+    const bool bCanApply = bAddTokenSelected && isAlive && !isFold && bHasComparableCard && AddTokenUsedCount < MaxAddTokenUses;
 
-    if (bAddTokenAppliedThisRound) ++AddTokenUsedCount;
+    if (bCanApply) ++AddTokenUsedCount;
 
-    bAddTokenSelected = false;
+    // 비교에 적용되지 못한 선택은 취소하고, 적용된 선택은 결과 단계까지 유지합니다.
+    bAddTokenSelected = bCanApply;
     OnRep_AddTokenState();
     ForceNetUpdate();
-
-    // 실제 판정에 사용한다는 뜻
-    return bAddTokenAppliedThisRound;
+    return bCanApply;
 }
 
 void AMainPlayerState::ResetAddToken()
 {
     bAddTokenSelected = false;
-    bAddTokenAppliedThisRound = false;
     OnRep_AddTokenState();
     ForceNetUpdate();
 }
@@ -101,7 +91,7 @@ int32 AMainPlayerState::GetRemainingAddTokenCount() const
 int32 AMainPlayerState::GetCardComparisonValue() const
 {
     // 토큰 사용 x
-    if (!bAddTokenAppliedThisRound) return MyCard.Value;
+    if (!bAddTokenSelected) return MyCard.Value;
 
     // 토큰을 사용한 조커는 종류와 관계없이 일반 카드보다 낮게 처리합니다.
     if (MyCard.IsJoker() || MyCard.Value <= 0) return 0;
