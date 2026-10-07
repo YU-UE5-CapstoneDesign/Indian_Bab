@@ -5,7 +5,10 @@
 AMainPlayerState::AMainPlayerState()
 {
     isAlive = 1;
+    isFold = false;
     TotalTriggerCount = 0;
+    AddTokenUsedCount = 0;
+    bAddTokenSelected = false;
 }
 
 void AMainPlayerState::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
@@ -19,6 +22,8 @@ void AMainPlayerState::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& Out
     DOREPLIFETIME(AMainPlayerState, TotalTriggerCount);
     DOREPLIFETIME(AMainPlayerState, SteamNickname);
     DOREPLIFETIME(AMainPlayerState, MyCard);
+    DOREPLIFETIME_CONDITION(AMainPlayerState, AddTokenUsedCount, COND_OwnerOnly);
+    DOREPLIFETIME(AMainPlayerState, bAddTokenSelected);
 }
 
 // 닉네임 Set/Get 함수
@@ -44,6 +49,55 @@ void AMainPlayerState::SetMyCard(const FCardData& NewCard)
 FCardData AMainPlayerState::GetMyCard() const
 {
     return MyCard;
+}
+
+bool AMainPlayerState::SetAddTokenSelected(bool bSelected)
+{
+    if (bSelected && (!isAlive || isFold || AddTokenUsedCount >= MaxAddTokenUses)) return false;
+    if (bAddTokenSelected == bSelected) return true;
+
+    bAddTokenSelected = bSelected;
+    OnRep_AddTokenState();
+    ForceNetUpdate();
+    return true;
+}
+
+bool AMainPlayerState::CommitAddTokenForComparison()
+{
+    const bool bHasComparableCard = MyCard.Value > 0 || MyCard.IsJoker();
+    const bool bCanApply = bAddTokenSelected && isAlive && !isFold && bHasComparableCard && AddTokenUsedCount < MaxAddTokenUses;
+
+    if (bCanApply) ++AddTokenUsedCount;
+
+    // 비교에 적용되지 못한 선택은 취소하고, 적용된 선택은 결과 단계까지 유지합니다.
+    bAddTokenSelected = bCanApply;
+    OnRep_AddTokenState();
+    ForceNetUpdate();
+    return bCanApply;
+}
+
+void AMainPlayerState::ResetAddToken()
+{
+    bAddTokenSelected = false;
+    OnRep_AddTokenState();
+    ForceNetUpdate();
+}
+
+int32 AMainPlayerState::GetRemainingAddTokenCount() const
+{
+    return FMath::Max(0, MaxAddTokenUses - AddTokenUsedCount);
+}
+
+int32 AMainPlayerState::GetCardComparisonValue() const
+{
+    // 토큰 사용 x
+    if (!bAddTokenSelected) return MyCard.Value;
+
+    // 토큰을 사용한 조커는 종류와 관계없이 일반 카드보다 낮게 처리합니다.
+    if (MyCard.IsJoker() || MyCard.Value <= 0) return 0;
+
+    // 일반 카드는 +3 후 13을 넘으면 1부터 다시 시작합니다.
+    return ((MyCard.Value - 1 + 3) % 13) + 1;
 }
 
 // 처음 서브 리볼버 설정
@@ -120,4 +174,9 @@ void AMainPlayerState::OnRep_MyCard()
 {
     UE_LOG(LogTemp, Warning, TEXT("[PS_%d] Card updated (Client)"), GetPlayerId());
     OnCardChanged.Broadcast();
+}
+
+void AMainPlayerState::OnRep_AddTokenState()
+{
+    OnAddTokenStateChanged.Broadcast();
 }

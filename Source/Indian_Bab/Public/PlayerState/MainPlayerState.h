@@ -9,6 +9,7 @@
 
 DECLARE_MULTICAST_DELEGATE_OneParam(FOnTriggerCountChanged, int32);
 DECLARE_MULTICAST_DELEGATE_OneParam(FOnAliveStateChanged, bool);
+DECLARE_MULTICAST_DELEGATE(FOnAddTokenStateChanged);
 
 class ACardManager;
 
@@ -36,6 +37,9 @@ public:
 
 	FOnTriggerCountChanged OnTriggerCountChanged;
 	FOnAliveStateChanged OnAliveStateChanged;
+	FOnAddTokenStateChanged OnAddTokenStateChanged;
+
+	static constexpr int32 MaxAddTokenUses = 3;
 
 	// 플레이어의 생존 유무
 	UPROPERTY(ReplicatedUsing = "OnRep_isAlive", BlueprintReadOnly, Category = "PlayerState")
@@ -61,6 +65,19 @@ public:
 	void SetMyCard(const FCardData& NewCard);
 	FCardData GetMyCard() const;
 
+	// 덧셈 토큰은 서버에서 선택하고, 최종 카드 비교에 참가할 때만 소모됩니다.
+	bool SetAddTokenSelected(bool bSelected);
+	bool CommitAddTokenForComparison();
+	void ResetAddToken();
+
+	UFUNCTION(BlueprintPure, Category = "PlayerState|AdditionToken")
+	bool IsAddTokenSelected() const { return bAddTokenSelected; }
+
+	UFUNCTION(BlueprintPure, Category = "PlayerState|AdditionToken")
+	int32 GetRemainingAddTokenCount() const;
+
+	int32 GetCardComparisonValue() const;
+
 	// 처음 서브 리볼버 설정
 	void SetInitSubRevolver();
 	void SetAliveState(bool bNewAlive);
@@ -85,11 +102,20 @@ protected:
 	UFUNCTION()
 	void OnRep_MyCard();
 
+	UFUNCTION()
+	void OnRep_AddTokenState();
+
 	// 스팀 닉네임 변수
 	UPROPERTY(ReplicatedUsing = OnRep_SteamNickname, BlueprintReadOnly, Category = "PlayerState")
     FString SteamNickname;
 
 	UPROPERTY(ReplicatedUsing = "OnRep_MyCard", BlueprintReadOnly, Category = "PlayerState")
 	FCardData MyCard;
+
+	UPROPERTY(ReplicatedUsing = OnRep_AddTokenState, BlueprintReadOnly, Category = "PlayerState|AdditionToken")
+	int32 AddTokenUsedCount;
+
+	UPROPERTY(ReplicatedUsing = OnRep_AddTokenState, BlueprintReadOnly, Category = "PlayerState|AdditionToken")
+	bool bAddTokenSelected;
 
 };

@@ -114,14 +114,19 @@ int32 ACardManager::GetSuitRank(const FString& Suit)
 }
 
 
-bool ACardManager::IsCardHigher(const FCardData& A, const FCardData& B)
+bool ACardManager::IsCardHigher(const FCardData& A, int32 AComparisonValue, const FCardData& B, int32 BComparisonValue)
 {
-    // 숫자 우선 비교
-    if (A.Value != B.Value)
+    if (AComparisonValue != BComparisonValue)
     {
-        return A.Value > B.Value;
+        return AComparisonValue > BComparisonValue;
     }
 
-    // 숫자가 같을 때만 문양 비교
+    // 두 조커의 숫자는 모두 14지만 Color가 Black보다 높습니다.
+    // 덧셈 토큰으로 둘 다 최저값이 된 경우에도 이 순서는 유지합니다.
+    if (A.IsJoker() && B.IsJoker())
+    {
+        return A.GetJokerRank() > B.GetJokerRank();
+    }
+
     return GetSuitRank(A.Suit) > GetSuitRank(B.Suit);
 }

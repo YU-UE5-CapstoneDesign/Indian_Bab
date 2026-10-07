@@ -62,6 +62,8 @@ public:
 	void HandleMainRevolverShotAction(AMainGamePlayerController* RequestPC);
 
 	void HandleMainRevolverGrabbed(ALobbyCharacter* Character);
+	void HandleMainRevolverGrabStarted(ALobbyCharacter* Character);
+	void HandleMainRevolverGrabInterrupted(ALobbyCharacter* Character);
 
 	// 자기 머리에 겨냥했을 때
 	void HandleFoldMontageFinished(ALobbyCharacter* Character);
@@ -119,6 +121,7 @@ protected:
 
 	// 활성 인원 업데이트
 	int32 UpdateActivePlayer(AMainGameState* GS);
+	int32 CountAliveSeatedPlayers() const;
 
 	// 결과 확인 및 승리 플레이어 PS 리턴
 	void CheckPlayerCard();

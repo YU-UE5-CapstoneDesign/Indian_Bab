@@ -21,10 +21,6 @@ public:
 	void SetParentMenu(UUserWidget* InParentMenu);
 
 protected:
-	// [VR 전용] 창을 닫아야 할 때 블루프린트에 알리는 이벤트
-	UFUNCTION(BlueprintImplementableEvent, Category = "VR UI")
-	void OnCloseMenuVR();
-
 	// 위젯 생성 시 (EventConstruct) 호출
 	virtual void NativeConstruct() override;
 

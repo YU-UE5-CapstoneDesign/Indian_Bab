@@ -11,6 +11,7 @@ class UComboBoxString;
 class USettingSubsystem;
 class UPlayerController;
 class UConfirmChangesWidget;
+class AMainGamePlayerController;
 
 
 /**
@@ -54,6 +55,9 @@ public:
 	 */
 	void SetParentMenu(UUserWidget* InParentMenu);
 
+	// 메인 게임에서 옵션을 열 때만 나가기 버튼을 표시합니다.
+	void ShowExitButtonForMainGame(AMainGamePlayerController* InController);
+
 	UFUNCTION(BlueprintCallable, Category = "Option Menu")
 	UUserWidget* GetParentMenu() const { return ParentMenu; }
 
@@ -64,6 +68,9 @@ public:
 	// [추가] WBP_ConfirmChanges 팝업의 '아니오' 버튼에서 호출
 	UFUNCTION(BlueprintCallable, Category = "Option Menu")
 	void OnConfirmChangesNo();
+
+	// 키보드 포커스가 다른 위젯으로 옮겨가도 기존 확인 동작으로 옵션을 닫습니다.
+	void HandleEscape();
 
 protected:
 	// '변경사항 저장' 팝업을 염 (블루프린트에서 VR용으로 띄우기 위해 이벤트로 변경)
@@ -100,6 +107,7 @@ private:
 	UPROPERTY(meta = (BindWidget)) TObjectPtr<UButton> Button_ResetAll;
 	UPROPERTY(meta = (BindWidget)) TObjectPtr<UButton> Button_OK;
 	UPROPERTY(meta = (BindWidget)) TObjectPtr<UButton> Button_Cancel;
+	UPROPERTY(meta = (BindWidget)) TObjectPtr<UButton> Button_ExitGame;
 
 	UPROPERTY(meta = (BindWidget)) TObjectPtr<UButton> Button_ResetMasterVolume;
 	UPROPERTY(meta = (BindWidget)) TObjectPtr<UButton> Button_ResetMouseSensitivity;
@@ -120,6 +128,7 @@ private:
 	UFUNCTION() void OnResetAllClicked();
 	UFUNCTION() void OnOKClicked();
 	UFUNCTION() void OnCancelClicked();
+	UFUNCTION() void OnExitGameClicked();
 
 	// 개별 초기화 버튼 클릭
 	UFUNCTION() void OnResetMasterVolumeClicked();

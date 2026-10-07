@@ -63,7 +63,7 @@ void URoomCreateWidget::OnNoClicked()
 			PlayerControllerRef->SetInputMode(InputModeData);
 		}
 	}
-	OnCloseMenuVR();
+	RemoveFromParent();
 }
 
 

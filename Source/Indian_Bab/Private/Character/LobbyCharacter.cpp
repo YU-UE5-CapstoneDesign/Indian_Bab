@@ -12,6 +12,7 @@
 #include "Actor/SeatActor.h"
 #include "Actor/Revolver.h"
 #include "Components/SphereComponent.h"
+#include "Components/StaticMeshComponent.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "Game/MainGameMode.h"
 #include "Game/MainGameState.h"
@@ -142,6 +143,13 @@ ALobbyCharacter::ALobbyCharacter()
 	CardDisplayMesh->SetVisibility(false);
 	CardDisplayMesh->SetRelativeLocation(FVector(0.f, 0.f, 100.f));
 	CardDisplayMesh->SetRelativeScale3D(FVector(0.1f));
+
+	// 메시와 재질, 카드 앞쪽 위치는 캐릭터 BP에서 지정합니다.
+	AddTokenDisplayMesh = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("AddTokenDisplayMesh"));
+	AddTokenDisplayMesh->SetupAttachment(CardDisplayMesh);
+	AddTokenDisplayMesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+	AddTokenDisplayMesh->SetCastShadow(false);
+	AddTokenDisplayMesh->SetVisibility(false);
 }
 
 // Called when the game starts or when spawned
@@ -174,6 +182,8 @@ void ALobbyCharacter::BindPlayerStateDelegates()
 	PS->OnCardChanged.RemoveAll(this);
 	PS->OnCardChanged.AddUObject(this, &ALobbyCharacter::UpdateCardWidget);
 	PS->OnCardChanged.AddUObject(this, &ALobbyCharacter::UpdateCardMesh);
+	PS->OnAddTokenStateChanged.RemoveAll(this);
+	PS->OnAddTokenStateChanged.AddUObject(this, &ALobbyCharacter::UpdateAddTokenDisplay);
 	PS->OnTriggerCountChanged.RemoveAll(this);
 	PS->OnTriggerCountChanged.AddUObject(this, &ALobbyCharacter::UpdateDeskRevolverCount);
 
@@ -273,6 +283,7 @@ void ALobbyCharacter::UpdateCardMesh()
 	if (IsLocallyControlled())
 	{
 		CardDisplayMesh->SetVisibility(false);
+		if (AddTokenDisplayMesh) AddTokenDisplayMesh->SetVisibility(false);
 		return;
 	}
 
@@ -280,12 +291,24 @@ void ALobbyCharacter::UpdateCardMesh()
 	if (Card.Value == 0)
 	{
 		CardDisplayMesh->SetVisibility(false);
+		if (AddTokenDisplayMesh) AddTokenDisplayMesh->SetVisibility(false);
 		return;
 	}
 	
 	UStaticMesh* LoadedCardMesh = Card.CardMesh.LoadSynchronous();
 	CardDisplayMesh->SetStaticMesh(LoadedCardMesh);
 	CardDisplayMesh->SetVisibility(IsValid(LoadedCardMesh));
+	UpdateAddTokenDisplay();
+}
+
+void ALobbyCharacter::UpdateAddTokenDisplay()
+{
+	if (!AddTokenDisplayMesh || !CardDisplayMesh) return;
+
+	const AMainPlayerState* PS = GetPlayerState<AMainPlayerState>();
+	const bool bShowToken = PS && !IsLocallyControlled()
+		&& CardDisplayMesh->IsVisible() && PS->IsAddTokenSelected();
+	AddTokenDisplayMesh->SetVisibility(bShowToken);
 }
 
 void ALobbyCharacter::UpdatePlayerNameColor()
@@ -501,12 +524,10 @@ void ALobbyCharacter::Multicast_PutBackGunMontage_Implementation(EGunHoldReason 
 
 	AnimInstance->Montage_Play(MontageToPlay, 1.0f);
 
-	if (HasAuthority())
-	{
-		FOnMontageEnded EndDelegate;
-		EndDelegate.BindUObject(this, &ALobbyCharacter::OnPutBackGunMontageEnded);
-		AnimInstance->Montage_SetEndDelegate(EndDelegate, MontageToPlay);
-	}
+	FOnMontageEnded EndDelegate;
+	EndDelegate.BindUObject(this, &ALobbyCharacter::OnPutBackGunMontageEnded);
+	AnimInstance->Montage_SetEndDelegate(EndDelegate, MontageToPlay);
+	
 }
 
 void ALobbyCharacter::OnRep_GunHoldReason()
@@ -642,7 +663,20 @@ void ALobbyCharacter::OnSitMontageEnded(UAnimMontage* Montage, bool bInterrupted
 
 void ALobbyCharacter::OnGrabGunMontageEnded(UAnimMontage* Montage, bool bInterrupted)
 {
-	if (bInterrupted) return;
+	if (bInterrupted)
+	{
+		if (HasAuthority() && GunHoldReason == EGunHoldReason::Win)
+		{
+			bMainRevolverGrabInProgress = false;
+#if WITH_SERVER_CODE
+			if (AMainGameMode* GM = GetWorld() ? GetWorld()->GetAuthGameMode<AMainGameMode>() : nullptr)
+			{
+				GM->HandleMainRevolverGrabInterrupted(this);
+			}
+#endif
+		}
+		return;
+	}
 	if (!HasAuthority()) return;
 #if WITH_SERVER_CODE
 	if (GunHoldReason == EGunHoldReason::Fold)
@@ -664,10 +698,10 @@ void ALobbyCharacter::OnGrabGunMontageEnded(UAnimMontage* Montage, bool bInterru
 
 void ALobbyCharacter::OnPutBackGunMontageEnded(UAnimMontage* Montage, bool bInterrupted)
 {
+	bIsPuttingBackGun = false;
+
 	if (bInterrupted) return;
 	if (!HasAuthority()) return;
-
-	bIsPuttingBackGun = false;
 
 #if WITH_SERVER_CODE
 	AMainGameMode* GM = GetWorld() ? GetWorld()->GetAuthGameMode<AMainGameMode>() : nullptr;
@@ -735,13 +769,14 @@ void ALobbyCharacter::SetActiveRevolver(ARevolver* NewRevolver)
 	ForceNetUpdate();
 }
 
-void ALobbyCharacter::BeginManualMainRevolverPhase()
+void ALobbyCharacter::BeginManualMainRevolverPhase(bool bEnterWinPose)
 {
 	if (!HasAuthority()) return;
 
-	GunHoldReason = EGunHoldReason::Win;
+	GunHoldReason = bEnterWinPose ? EGunHoldReason::Win : EGunHoldReason::None;
 	bShowMainShotAimLine = false;
 	bMainRevolverGrabbed = false;
+	bMainRevolverGrabInProgress = false;
 	bIsPuttingBackGun = false;
 
 	if (ActiveRevolver)
@@ -750,6 +785,7 @@ void ALobbyCharacter::BeginManualMainRevolverPhase()
 		if (ActiveRevolver->CollisionSphere)
 		{
 			ActiveRevolver->CollisionSphere->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
+			ActiveRevolver->CollisionSphere->SetCollisionResponseToChannel(ECC_Visibility, ECR_Block);
 		}
 	}
 
@@ -764,6 +800,7 @@ void ALobbyCharacter::ReturnMainRevolverToTableImmediately()
 
 	bShowMainShotAimLine = false;
 	bMainRevolverGrabbed = false;
+	bMainRevolverGrabInProgress = false;
 	bIsPuttingBackGun = false;
 	GunHoldReason = EGunHoldReason::None;
 
@@ -781,6 +818,7 @@ void ALobbyCharacter::MarkMainRevolverGrabbed()
 	if (!HasAuthority()) return;
 
 	bMainRevolverGrabbed = true;
+	bMainRevolverGrabInProgress = false;
 	ForceNetUpdate();
 }
 

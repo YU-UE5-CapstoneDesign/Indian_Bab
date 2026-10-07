@@ -11,6 +11,10 @@ class UInputMappingContext;
 class UInputAction;
 class UGameResultWidget;
 class UReadyWidget;
+class UExitConfirmWidget;
+class UOptionMenuWidget;
+class UWidgetComponent;
+class UUserWidget;
 
 UCLASS()
 class INDIAN_BAB_API AMainGamePlayerController : public APlayerController
@@ -33,7 +37,35 @@ public:
     virtual void BeginPlay() override;
     virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
 
+    void ConfirmExitFromMainGame();
+    void CancelExitFromMainGame();
+    void ShowExitConfirmation();
+	void ResumeAfterOptionsMenu();
+
 private:
+	void ShowOptionsMenu();
+	void FocusPCModal(UUserWidget* Widget);
+    void DismissExitConfirmation();
+	UWidgetComponent* FindVRMenuComponent() const;
+
+	UPROPERTY(EditDefaultsOnly, Category = "UI|Options")
+	TSubclassOf<UOptionMenuWidget> OptionMenuWidgetClass;
+
+	UPROPERTY(Transient)
+	TObjectPtr<UOptionMenuWidget> OptionMenuInstance;
+
+    UPROPERTY(EditDefaultsOnly, Category = "UI|Exit")
+    TSubclassOf<UExitConfirmWidget> ExitConfirmWidgetClass;
+
+    UPROPERTY(Transient)
+    TObjectPtr<UExitConfirmWidget> ExitConfirmWidgetInstance;
+	UPROPERTY(Transient)
+	TObjectPtr<UWidgetComponent> ExitConfirmWorldComponent;
+	UPROPERTY(Transient)
+	TObjectPtr<UUserWidget> PreviousVRMenuWidget;
+
+    bool bExitRequested = false;
+
     void ResolveLocalPlayMode();
     bool bLocalPlayModeResolved = false;
 
@@ -59,6 +91,9 @@ public:
 
     UFUNCTION(BlueprintCallable)
     void RequestFold();
+
+    UFUNCTION(BlueprintCallable, Category = "Addition Token")
+    void RequestSetAddTokenSelected(bool bSelected);
 
 	/** Close the world-space VR menu and return to gameplay. */
 	UFUNCTION(BlueprintCallable, Category = "VR UI")
@@ -110,6 +145,9 @@ private:
     // 서버로 보내는 RPC
     UFUNCTION(Server, Reliable)
     void Server_RequestBetAction(EBetAction Action, int32 RaiseCount);
+
+    UFUNCTION(Server, Reliable)
+    void Server_SetAddTokenSelected(bool bSelected);
 
     UFUNCTION(Server, Reliable)
     void Server_SetSteamNickname(const FString& NewNickname);

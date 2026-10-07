@@ -140,6 +140,8 @@ public:
 	UPROPERTY(Replicated, BlueprintReadOnly, Category = "Camera")
 	FRotator ReplicatedAim;
 
+	bool bMainRevolverGrabInProgress = false;
+
 	// 서버에서 스팀 닉네임 및 카드 바인딩
 	virtual void PossessedBy(AController* NewController) override;
 
@@ -154,6 +156,9 @@ public:
 
 	UFUNCTION()
 	void UpdateCardMesh();
+
+	// 카드가 보이고 덧셈 토큰을 선택한 플레이어에게 토큰 메시를 표시합니다.
+	void UpdateAddTokenDisplay();
 
 	UFUNCTION(Server, Unreliable)
 	void Server_UpdateAim(FRotator NewAim);
@@ -172,7 +177,6 @@ public:
 	// 총 집어들기 몽타주 재생 (Fold/Win 공통)
 	UFUNCTION(NetMulticast, Reliable)
 	void Multicast_PlayGrabGunMontage(EGunHoldReason Reason);
-
 
 	// 총 원래 위치로 보내는 몽타주 재생 (Fold/Win 공통)
 	UFUNCTION(NetMulticast, Reliable)
@@ -224,7 +228,7 @@ public:
 
 	void SetActiveRevolver(ARevolver* NewRevolver);
 
-	void BeginManualMainRevolverPhase();
+	void BeginManualMainRevolverPhase(bool bEnterWinPose = true);
 	virtual void ReturnMainRevolverToTableImmediately();
 	void MarkMainRevolverGrabbed();
 	bool IsMainRevolverGrabbed() const;
@@ -238,6 +242,9 @@ public:
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Card")
 	TObjectPtr<UStaticMeshComponent> CardDisplayMesh;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Card")
+	TObjectPtr<UStaticMeshComponent> AddTokenDisplayMesh;
 
 	// 자기 서브 리볼버 카운트 업데이트 함수
 	void UpdateDeskRevolverCount(int32 TriggerCount);
