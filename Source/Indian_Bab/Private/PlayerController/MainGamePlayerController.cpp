@@ -195,6 +195,7 @@ void AMainGamePlayerController::ShowOptionsMenu()
 	}
 
 	OptionMenuInstance->AddToViewport(150);
+	OptionMenuInstance->ShowExitButtonForMainGame(this);
 	FocusPCModal(OptionMenuInstance);
 }
 
@@ -946,6 +947,13 @@ void AMainGamePlayerController::OnMenuToggleLeft(const FInputActionValue& Value)
 
 	WidgetComponent->InitWidget();
 	UUserWidget* MasterMenu = WidgetComponent->GetUserWidgetObject();
+	if (MasterMenu)
+	{
+		if (UOptionMenuWidget* EmbeddedOptionMenu = Cast<UOptionMenuWidget>(MasterMenu->GetWidgetFromName(TEXT("WBP_OptionMenu"))))
+		{
+			EmbeddedOptionMenu->ShowExitButtonForMainGame(this);
+		}
+	}
 	UWidget* WidgetMenuPage = MasterMenu
 		? MasterMenu->GetWidgetFromName(TEXT("WidgetMenu"))
 		: nullptr;

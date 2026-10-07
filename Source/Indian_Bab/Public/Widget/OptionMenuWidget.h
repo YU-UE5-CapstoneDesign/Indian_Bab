@@ -11,6 +11,7 @@ class UComboBoxString;
 class USettingSubsystem;
 class UPlayerController;
 class UConfirmChangesWidget;
+class AMainGamePlayerController;
 
 
 /**
@@ -53,6 +54,9 @@ public:
 	 * '확인'/'취소' 시 부모 위젯을 다시 보이게 하기 위해 필수
 	 */
 	void SetParentMenu(UUserWidget* InParentMenu);
+
+	// 메인 게임에서 옵션을 열 때만 나가기 버튼을 표시합니다.
+	void ShowExitButtonForMainGame(AMainGamePlayerController* InController);
 
 	UFUNCTION(BlueprintCallable, Category = "Option Menu")
 	UUserWidget* GetParentMenu() const { return ParentMenu; }

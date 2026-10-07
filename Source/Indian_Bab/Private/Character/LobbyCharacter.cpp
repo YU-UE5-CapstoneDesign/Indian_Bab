@@ -182,7 +182,6 @@ void ALobbyCharacter::BindPlayerStateDelegates()
 	PS->OnCardChanged.RemoveAll(this);
 	PS->OnCardChanged.AddUObject(this, &ALobbyCharacter::UpdateCardWidget);
 	PS->OnCardChanged.AddUObject(this, &ALobbyCharacter::UpdateCardMesh);
-	PS->OnCardChanged.AddUObject(this, &ALobbyCharacter::UpdateAddTokenDisplay);
 	PS->OnAddTokenStateChanged.RemoveAll(this);
 	PS->OnAddTokenStateChanged.AddUObject(this, &ALobbyCharacter::UpdateAddTokenDisplay);
 	PS->OnTriggerCountChanged.RemoveAll(this);
@@ -195,7 +194,6 @@ void ALobbyCharacter::BindPlayerStateDelegates()
 	UpdateNameWidget();
 	UpdateCardWidget();
 	UpdateCardMesh();
-	UpdateAddTokenDisplay();
 	UpdatePlayerNameColor();
 
 	if (IsValid(DeskRevolver))
@@ -285,6 +283,7 @@ void ALobbyCharacter::UpdateCardMesh()
 	if (IsLocallyControlled())
 	{
 		CardDisplayMesh->SetVisibility(false);
+		if (AddTokenDisplayMesh) AddTokenDisplayMesh->SetVisibility(false);
 		return;
 	}
 
@@ -292,12 +291,14 @@ void ALobbyCharacter::UpdateCardMesh()
 	if (Card.Value == 0)
 	{
 		CardDisplayMesh->SetVisibility(false);
+		if (AddTokenDisplayMesh) AddTokenDisplayMesh->SetVisibility(false);
 		return;
 	}
 	
 	UStaticMesh* LoadedCardMesh = Card.CardMesh.LoadSynchronous();
 	CardDisplayMesh->SetStaticMesh(LoadedCardMesh);
 	CardDisplayMesh->SetVisibility(IsValid(LoadedCardMesh));
+	UpdateAddTokenDisplay();
 }
 
 void ALobbyCharacter::UpdateAddTokenDisplay()

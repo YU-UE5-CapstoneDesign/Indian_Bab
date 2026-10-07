@@ -16,6 +16,15 @@ void UOptionMenuWidget::SetParentMenu(UUserWidget* InParentMenu)
 	ParentMenu = InParentMenu;
 }
 
+void UOptionMenuWidget::ShowExitButtonForMainGame(AMainGamePlayerController* InController)
+{
+	if (!InController || !Button_ExitGame) return;
+
+	SetOwningPlayer(InController);
+	PlayerControllerRef = InController;
+	Button_ExitGame->SetVisibility(ESlateVisibility::Visible);
+}
+
 
 void UOptionMenuWidget::NativeConstruct()
 {
