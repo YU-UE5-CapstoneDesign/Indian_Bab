@@ -7,9 +7,11 @@
 #include "Character/LobbyPCCharacter.h"
 #include "Character/LobbyVRCharacter.h"
 #include "Actor/SeatActor.h"
+#include "Actor/Revolver.h"
 #include "CardController/CardManager.h"
 #include "PlayerState/MainPlayerState.h"
 #include "PlayerController/MainGamePlayerController.h"
+#include "Game/CardRevealTypes.h"
 #include "GameFramework/Character.h"
 
 #if WITH_SERVER_CODE
@@ -90,6 +92,70 @@ void AMainGameMode::CheckPlayerCard()
     CurrentWinnerPS = MaxCardPlayer();
 	if(!CurrentWinnerPS) return;
 
+	TArray<FCardRevealEntry> RevealEntries;
+	for (ASeatActor* Seat : GS->SeatChairArray)
+	{
+		ALobbyCharacter* Character = Seat ? Cast<ALobbyCharacter>(Seat->GetOccupant()) : nullptr;
+		AMainPlayerState* PS = Character ? Character->GetPlayerState<AMainPlayerState>() : nullptr;
+		if (!PS || !PS->isAlive || PS->isFold) continue;
+
+		FCardRevealEntry& Entry = RevealEntries.AddDefaulted_GetRef();
+		Entry.Card = PS->GetMyCard();
+		Entry.PlayerName = PS->GetSteamNickname();
+		if (Entry.PlayerName.IsEmpty()) Entry.PlayerName = PS->GetPlayerName();
+		if (Entry.PlayerName.IsEmpty()) Entry.PlayerName = FString::Printf(TEXT("Player %d"), PS->GetPlayerId());
+		Entry.ComparisonValue = PS->GetCardComparisonValue();
+		Entry.bAddTokenSelected = PS->IsAddTokenSelected();
+		Entry.bWinner = PS == CurrentWinnerPS;
+	}
+
+	// 카드가 지워지기 전에 확정값을 각 클라이언트에 전달합니다.
+	GS->bTurnActionInProgress = true;
+	GS->ClearTimerInfo();
+	GS->SetGamePhase(EGamePhase::CardReveal);
+	if (CardRevealDurationSeconds <= 0.0f || RevealEntries.IsEmpty())
+	{
+		FinishCardReveal();
+		return;
+	}
+	for (APlayerState* PlayerState : GS->PlayerArray)
+	{
+		AMainPlayerState* PS = Cast<AMainPlayerState>(PlayerState);
+		if (AMainGamePlayerController* PC = PS ? Cast<AMainGamePlayerController>(PS->GetOwner()) : nullptr)
+		{
+			PC->Client_BeginCardReveal(RevealEntries, CardRevealDurationSeconds);
+		}
+	}
+	GetWorldTimerManager().SetTimer(CardRevealTimerHandle, this, &AMainGameMode::FinishCardReveal,
+		CardRevealDurationSeconds, false);
+}
+
+void AMainGameMode::FinishCardReveal()
+{
+	if (!HasAuthority()) return;
+	AMainGameState* GS = GetGameState<AMainGameState>();
+	if (!GS || GS->CurrentGamePhase != EGamePhase::CardReveal) return;
+	GetWorldTimerManager().ClearTimer(CardRevealTimerHandle);
+	for (APlayerState* PlayerState : GS->PlayerArray)
+	{
+		AMainPlayerState* PS = Cast<AMainPlayerState>(PlayerState);
+		if (AMainGamePlayerController* PC = PS ? Cast<AMainGamePlayerController>(PS->GetOwner()) : nullptr)
+		{
+			PC->Client_EndCardReveal();
+		}
+	}
+	AMainGamePlayerController* PC = IsValid(CurrentWinnerPS)
+		? Cast<AMainGamePlayerController>(CurrentWinnerPS->GetOwner()) : nullptr;
+	ALobbyCharacter* WinnerCharacter = PC ? Cast<ALobbyCharacter>(PC->GetPawn()) : nullptr;
+	ARevolver* Revolver = GetMainRevolver();
+	if (!IsValid(WinnerCharacter) || !IsValid(Revolver))
+	{
+		CurrentWinnerPS = nullptr;
+		if (GS->AlivePlayerCount <= 1) EndGame(GetLastAlivePlayer());
+		else NextRound();
+		return;
+	}
+
 	// 승자를 메인 리볼버 사수이자 다음 라운드 선 플레이어로 지정
 	// 미리 게임 턴 바꿔서 색깔 변경하기 위해서
 	for (int32 i = 0; i < GS->SeatChairArray.Num(); ++i)
@@ -119,22 +185,6 @@ void AMainGameMode::CheckPlayerCard()
         }
     }
 	
-	AMainGamePlayerController* PC = Cast<AMainGamePlayerController>(CurrentWinnerPS->GetOwner());
-	if (!PC) return;
-
-	ALobbyCharacter* WinnerCharacter = Cast<ALobbyCharacter>(PC->GetPawn());
-	if (!WinnerCharacter)
-	{
-		UE_LOG(LogTemp, Warning, TEXT("[GM] Winner pawn is not ALobbyCharacter"));
-		return;
-	}
-
-	ARevolver* Revolver = GetMainRevolver();
-	if (!Revolver) 
-	{
-		UE_LOG(LogTemp, Warning, TEXT("[GM] MainRevolver is NULL"));
-		return;
-	}
 	UE_LOG(LogTemp, Warning, TEXT("[GM] MainRevolver is found"));
 
 	GS->SetGamePhase(EGamePhase::Result);

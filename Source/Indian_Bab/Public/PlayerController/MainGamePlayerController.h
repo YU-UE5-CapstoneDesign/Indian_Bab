@@ -3,6 +3,7 @@
 #include "CoreMinimal.h"
 #include "GameFramework/PlayerController.h"
 #include "InputActionValue.h" 
+#include "Game/CardRevealTypes.h"
 #include "MainGamePlayerController.generated.h"
 
 class UMainGameWidget;
@@ -15,6 +16,7 @@ class UExitConfirmWidget;
 class UOptionMenuWidget;
 class UWidgetComponent;
 class UUserWidget;
+class ACardRevealStage;
 
 UCLASS()
 class INDIAN_BAB_API AMainGamePlayerController : public APlayerController
@@ -108,6 +110,12 @@ public:
     UFUNCTION(Client, Reliable)
     void Client_SetPCMainShotMode(bool bEnabled);
 
+	UFUNCTION(Client, Reliable)
+	void Client_BeginCardReveal(const TArray<FCardRevealEntry>& Entries, float Duration);
+
+	UFUNCTION(Client, Reliable)
+	void Client_EndCardReveal();
+
     UFUNCTION(Server, Reliable)
     void Server_RequestReady();
 
@@ -129,6 +137,12 @@ public:
     // 생성한 PC 결과 위젯
     UPROPERTY(Transient)
     TObjectPtr<UGameResultWidget> PCResultWidgetInstance;
+
+	UPROPERTY(EditDefaultsOnly, Category = "UI|Card Reveal")
+	TSubclassOf<ACardRevealStage> CardRevealStageClass;
+
+	UPROPERTY(Transient)
+	TObjectPtr<ACardRevealStage> CardRevealStageInstance;
 
     // 서버가 해당 PC 플레이어에게 결과 화면 표시를 요청합니다.
     UFUNCTION(Client, Reliable)
