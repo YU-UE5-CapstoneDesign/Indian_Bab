@@ -1,6 +1,8 @@
 #include "Actor/CardRevealStage.h"
 #include "Actor/SeatActor.h"
 
+#include "Containers/StringConv.h"
+
 #include "Components/SceneComponent.h"
 #include "Components/StaticMeshComponent.h"
 #include "Components/TextRenderComponent.h"
@@ -9,6 +11,25 @@
 #include "Materials/MaterialInterface.h"
 #include "Sound/SoundBase.h"
 #include "EngineUtils.h"
+
+namespace
+{
+	void SetFittedPlayerName(UTextRenderComponent* TextComponent, const FString& PlayerName, float MaxWidth)
+	{
+		TextComponent->SetText(FText::FromString(PlayerName));
+		if (TextComponent->GetTextLocalSize().Y <= MaxWidth) return;
+
+		// 글자 수 대신 실제 텍스트 폭을 기준으로 자르고, 이모지의 서로게이트 쌍은 나누지 않습니다.
+		for (int32 Cut = PlayerName.Len() - 1; Cut > 0; --Cut)
+		{
+			if (StringConv::IsHighSurrogate(PlayerName[Cut - 1]) && StringConv::IsLowSurrogate(PlayerName[Cut])) continue;
+			TextComponent->SetText(FText::FromString(PlayerName.Left(Cut) + TEXT("...")));
+			if (TextComponent->GetTextLocalSize().Y <= MaxWidth) return;
+		}
+
+		TextComponent->SetText(FText::FromString(TEXT("...")));
+	}
+}
 
 ACardRevealStage::ACardRevealStage()
 {
@@ -98,14 +119,6 @@ void ACardRevealStage::StartRevealAtView(FVector ViewLocation, FRotator ViewRota
 
 		Visual.Front = CreateMesh();
 		Visual.Front->SetStaticMesh(Entry.Card.CardMesh.LoadSynchronous());
-		if (FrontMaterial)
-		{
-			// 원본 카드 에셋은 그대로 두고 공개 연출에만 Unlit 머티리얼을 적용합니다.
-			for (int32 MaterialIndex = 0; MaterialIndex < Visual.Front->GetNumMaterials(); ++MaterialIndex)
-			{
-				Visual.Front->SetMaterial(MaterialIndex, FrontMaterial);
-			}
-		}
 		Visual.Front->SetRelativeLocation(FVector(0.0f, 0.0f, 1.0f));
 		// 원본 카드 메시의 그림 면은 로컬 -Z이므로 테이블 위에서는 뒤집어 올립니다.
 		Visual.Front->SetRelativeRotation(FRotator(180.0f, 0.0f, 0.0f));
@@ -123,26 +136,40 @@ void ACardRevealStage::StartRevealAtView(FVector ViewLocation, FRotator ViewRota
 		Visual.Token->SetRelativeScale3D(FVector(0.01f));
 		Visual.Token->SetVisibility(false);
 
+		Visual.NameText = NewObject<UTextRenderComponent>(this);
+		Visual.NameText->SetupAttachment(Visual.Pivot);
+		Visual.NameText->SetWorldSize(PlayerNameSize);
+		Visual.NameText->SetTextRenderColor(Entry.bWinner ? WinnerNameColor : PlayerNameColor);
+		Visual.NameText->SetHorizontalAlignment(EHTA_Center);
+		Visual.NameText->SetRelativeLocation(WinnerNameOffset);
+		Visual.NameText->SetRelativeRotation(FRotator(90.0f, 90.0f, 0.0f));
+		Visual.NameText->RegisterComponent();
+		SetFittedPlayerName(Visual.NameText, Entry.PlayerName, FMath::Min(PlayerNameMaxWidth, CardSpacing * 0.9f));
+		Visual.NameText->SetVisibility(false);
+
 		if (Entry.bWinner)
 		{
-			// 이름이 긴 플레이어들이 서로 겹치지 않도록 승리자 이름만 만듭니다.
-			Visual.NameText = NewObject<UTextRenderComponent>(this);
-			Visual.NameText->SetupAttachment(Visual.Pivot);
-			Visual.NameText->SetText(FText::FromString(FString::Printf(TEXT("WINNER\n%s"), *Entry.PlayerName)));
-			Visual.NameText->SetWorldSize(WinnerNameSize);
-			Visual.NameText->SetTextRenderColor(WinnerNameColor);
-			Visual.NameText->SetHorizontalAlignment(EHTA_Center);
-			Visual.NameText->SetRelativeLocation(WinnerNameOffset);
-			Visual.NameText->SetRelativeRotation(FRotator(90.0f, 90.0f, 0.0f));
-			Visual.NameText->RegisterComponent();
-			Visual.NameText->SetVisibility(false);
+			Visual.WinnerText = NewObject<UTextRenderComponent>(this);
+			Visual.WinnerText->SetupAttachment(Visual.Pivot);
+			Visual.WinnerText->SetText(FText::FromString(TEXT("WINNER")));
+			Visual.WinnerText->SetWorldSize(WinnerNameSize);
+			Visual.WinnerText->SetTextRenderColor(WinnerNameColor);
+			Visual.WinnerText->SetHorizontalAlignment(EHTA_Center);
+			Visual.WinnerText->SetRelativeLocation(WinnerLabelOffset);
+			Visual.WinnerText->SetRelativeRotation(FRotator(90.0f, 90.0f, 0.0f));
+			Visual.WinnerText->RegisterComponent();
+			const float WinnerLabelWidth = Visual.WinnerText->GetTextLocalSize().Y;
+			const float MaxLabelWidth = FMath::Min(PlayerNameMaxWidth, CardSpacing * 0.9f);
+			if (WinnerLabelWidth > MaxLabelWidth && MaxLabelWidth > 0.0f)
+			{
+				Visual.WinnerText->SetWorldSize(WinnerNameSize * MaxLabelWidth / WinnerLabelWidth);
+			}
+			Visual.WinnerText->SetVisibility(false);
 		}
 
 		Visual.ValueText = NewObject<UTextRenderComponent>(this);
 		Visual.ValueText->SetupAttachment(Visual.Pivot);
-		const FString ValueLabel = Entry.bAddTokenSelected
-			? FString::Printf(TEXT("+3  >  %d"), Entry.ComparisonValue)
-			: FString::FromInt(Entry.ComparisonValue);
+		const FString ValueLabel = Entry.Card.GetDisplayRank();
 		Visual.ValueText->SetText(FText::FromString(ValueLabel));
 		Visual.ValueText->SetWorldSize(ComparisonValueSize);
 		Visual.ValueText->SetTextRenderColor(ComparisonValueColor);
@@ -171,15 +198,12 @@ void ACardRevealStage::Tick(float DeltaSeconds)
 		const float CardProgress = FMath::Clamp((ElapsedTime - CardStart) / FMath::Max(CardFlipDuration, 0.01f), 0.0f, 1.0f);
 		const float Ease = FMath::InterpEaseOut(0.0f, 1.0f, CardProgress, 2.0f);
 		const float TargetX = (Index - (Visuals.Num() - 1) * 0.5f) * CardSpacing;
-		Visual.Pivot->SetRelativeLocation(FVector(TargetX * Ease, 0.0f,
-			2.0f + (1.0f - Ease) * 35.0f + FMath::Sin(Ease * PI) * 12.0f));
+		Visual.Pivot->SetRelativeLocation(FVector(TargetX * Ease, 0.0f, 4.0f + (1.0f - Ease) * 35.0f + FMath::Sin(Ease * PI) * 12.0f));
 		Visual.Pivot->SetRelativeRotation(FRotator(0.0f, 0.0f, (1.0f - Ease) * 180.0f));
 		Visual.Back->SetVisibility(CardProgress < 0.5f);
 		Visual.Front->SetVisibility(CardProgress >= 0.5f && Visual.Front->GetStaticMesh() != nullptr);
-		if (Visual.NameText)
-		{
-			Visual.NameText->SetVisibility(CardProgress >= 0.9f && ElapsedTime >= WinnerStart);
-		}
+		Visual.NameText->SetVisibility(CardProgress >= 0.9f);
+		if (Visual.WinnerText) Visual.WinnerText->SetVisibility(CardProgress >= 0.9f && ElapsedTime >= WinnerStart);
 		Visual.ValueText->SetVisibility(CardProgress >= 0.9f);
 
 		const float TokenStart = CardStart + TokenDelay;

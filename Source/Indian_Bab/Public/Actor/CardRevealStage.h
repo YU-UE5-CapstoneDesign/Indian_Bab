@@ -35,6 +35,7 @@ private:
 		UStaticMeshComponent* Back = nullptr;
 		UStaticMeshComponent* Token = nullptr;
 		UTextRenderComponent* NameText = nullptr;
+		UTextRenderComponent* WinnerText = nullptr;
 		UTextRenderComponent* ValueText = nullptr;
 		bool bHasToken = false;
 		bool bDropSoundPlayed = false;
@@ -87,8 +88,21 @@ private:
 	UPROPERTY(EditDefaultsOnly, Category = "Card Reveal|Text", meta = (ClampMin = "0.1"))
 	float WinnerNameSize = 6.5f;
 
+	UPROPERTY(EditDefaultsOnly, Category = "Card Reveal|Text", meta = (ClampMin = "0.1"))
+	float PlayerNameSize = 4.0f;
+
 	UPROPERTY(EditDefaultsOnly, Category = "Card Reveal|Text")
 	FColor WinnerNameColor = FColor(255, 200, 80);
+
+	// 카드 사이의 간격 안에 들어오도록 긴 닉네임의 뒤를 ...으로 줄입니다.
+	UPROPERTY(EditDefaultsOnly, Category = "Card Reveal|Text", meta = (ClampMin = "1.0"))
+	float PlayerNameMaxWidth = 28.0f;
+
+	UPROPERTY(EditDefaultsOnly, Category = "Card Reveal|Text")
+	FColor PlayerNameColor = FColor::White;
+
+	UPROPERTY(EditDefaultsOnly, Category = "Card Reveal|Text")
+	FVector WinnerLabelOffset = FVector(0.0f, -35.0f, 2.0f);
 
 	UPROPERTY(EditDefaultsOnly, Category = "Card Reveal|Text")
 	FVector ComparisonValueOffset = FVector(0.0f, 25.0f, 2.0f);

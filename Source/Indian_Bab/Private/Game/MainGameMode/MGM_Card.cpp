@@ -113,6 +113,16 @@ void AMainGameMode::CheckPlayerCard()
 	GS->bTurnActionInProgress = true;
 	GS->ClearTimerInfo();
 	GS->SetGamePhase(EGamePhase::CardReveal);
+
+	// 승자 판정이 끝났으므로 이번 라운드 카드 제거
+    for (APlayerState* PlayerState : GS->PlayerArray)
+    {
+        if (AMainPlayerState* MPS = Cast<AMainPlayerState>(PlayerState))
+        {
+            MPS->SetMyCard(FCardData());
+        }
+    }
+	
 	if (CardRevealDurationSeconds <= 0.0f || RevealEntries.IsEmpty())
 	{
 		FinishCardReveal();
@@ -175,15 +185,6 @@ void AMainGameMode::FinishCardReveal()
 			break;
 		}
 	}
-
-	// 승자 판정이 끝났으므로 이번 라운드 카드 제거
-    for (APlayerState* PlayerState : GS->PlayerArray)
-    {
-        if (AMainPlayerState* MPS = Cast<AMainPlayerState>(PlayerState))
-        {
-            MPS->SetMyCard(FCardData());
-        }
-    }
 	
 	UE_LOG(LogTemp, Warning, TEXT("[GM] MainRevolver is found"));
 
