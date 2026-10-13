@@ -105,10 +105,10 @@ private:
 	FVector WinnerLabelOffset = FVector(0.0f, -35.0f, 2.0f);
 
 	UPROPERTY(EditDefaultsOnly, Category = "Card Reveal|Text")
-	FVector ComparisonValueOffset = FVector(0.0f, 25.0f, 2.0f);
+	FVector ComparisonValueOffset = FVector(0.0f, 30.0f, 2.0f);
 
 	UPROPERTY(EditDefaultsOnly, Category = "Card Reveal|Text", meta = (ClampMin = "0.1"))
-	float ComparisonValueSize = 7.0f;
+	float ComparisonValueSize = 8.0f;
 
 	UPROPERTY(EditDefaultsOnly, Category = "Card Reveal|Text")
 	FColor ComparisonValueColor = FColor(255, 232, 190);
