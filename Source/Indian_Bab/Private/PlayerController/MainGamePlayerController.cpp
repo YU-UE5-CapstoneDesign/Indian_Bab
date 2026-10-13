@@ -8,6 +8,7 @@
 #include "Game/MainGameMode.h"
 #include "Game/MainGameTypes.h"
 #include "Actor/Revolver.h"
+#include "Actor/CardRevealStage.h"
 #include "GameFramework/PlayerState.h"
 #include "Character/LobbyCameraManager.h"
 #include "Character/LobbyCharacter.h"
@@ -104,6 +105,7 @@ void AMainGamePlayerController::BeginPlay()
 
 void AMainGamePlayerController::EndPlay(const EEndPlayReason::Type EndPlayReason)
 {
+    Client_EndCardReveal_Implementation();
     DismissExitConfirmation();
 	if (OptionMenuInstance)
 	{
@@ -129,6 +131,36 @@ void AMainGamePlayerController::EndPlay(const EEndPlayReason::Type EndPlayReason
     }
 
     Super::EndPlay(EndPlayReason);
+}
+
+void AMainGamePlayerController::Client_BeginCardReveal_Implementation(const TArray<FCardRevealEntry>& Entries, float Duration)
+{
+	if (!IsLocalPlayerController() || !GetWorld()) return;
+	Client_EndCardReveal_Implementation();
+
+	if (!CardRevealStageClass)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[CardReveal] CardRevealStageClass is not configured."));
+		return;
+	}
+
+	FActorSpawnParameters SpawnParams;
+	SpawnParams.Owner = this;
+	SpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+	CardRevealStageInstance = GetWorld()->SpawnActor<ACardRevealStage>(CardRevealStageClass.Get(), SpawnParams);
+	if (CardRevealStageInstance)
+	{
+		CardRevealStageInstance->StartReveal(this, Entries, Duration);
+	}
+}
+
+void AMainGamePlayerController::Client_EndCardReveal_Implementation()
+{
+	if (IsValid(CardRevealStageInstance))
+	{
+		CardRevealStageInstance->Destroy();
+	}
+	CardRevealStageInstance = nullptr;
 }
 
 UWidgetComponent* AMainGamePlayerController::FindVRMenuComponent() const
@@ -742,15 +774,16 @@ void AMainGamePlayerController::Server_SetAddTokenSelected_Implementation(bool b
 {
     AMainPlayerState* PS = GetPlayerState<AMainPlayerState>();
     if (!PS) return;
+	const AMainGameState* GS = GetWorld() ? GetWorld()->GetGameState<AMainGameState>() : nullptr;
+	if (GS && GS->CurrentGamePhase == EGamePhase::CardReveal) return;
 
-    // 체크 해제는 언제든 허용하여 예약 상태가 남지 않게 합니다.
+    // 공개가 시작되기 전까지 체크 해제는 허용하여 예약 상태가 남지 않게 합니다.
     if (!bSelected)
     {
         PS->SetAddTokenSelected(false);
         return;
     }
 
-    const AMainGameState* GS = GetWorld() ? GetWorld()->GetGameState<AMainGameState>() : nullptr;
     if (!GS || GS->CurrentGamePhase != EGamePhase::Playing) return;
 
     PS->SetAddTokenSelected(true);

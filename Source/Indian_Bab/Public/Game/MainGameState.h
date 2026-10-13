@@ -17,7 +17,8 @@ enum class EGamePhase : uint8
 	Lobby UMETA(DisplayName = "로비 (대기중)"),
 	Starting UMETA(DisplayName = "시작 카운트다운"),
 	Playing UMETA(DisplayName = "게임 진행중"),
-	Result UMETA(DisplayName = "결과창")
+	Result UMETA(DisplayName = "결과창"),
+	CardReveal UMETA(DisplayName = "카드 공개")
 };
 
 USTRUCT(BlueprintType)

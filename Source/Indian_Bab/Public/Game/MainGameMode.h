@@ -125,6 +125,7 @@ protected:
 
 	// 결과 확인 및 승리 플레이어 PS 리턴
 	void CheckPlayerCard();
+	void FinishCardReveal();
 
 	// 다음 행동 체크 함수
 	void CheckNext();
@@ -179,6 +180,7 @@ private:
 	void NotifyMatchClearHost();
 
 	FTimerHandle TimerHandle;
+	FTimerHandle CardRevealTimerHandle;
 
 	// 준비 완료한 플레이어 목록
 	UPROPERTY()
@@ -200,6 +202,9 @@ private:
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Game|Result", meta = (AllowPrivateAccess = "true", ClampMin = "0.0", UIMin = "0.0"))
 	float ResultWidgetDelaySeconds = 1.5f;
+
+	UPROPERTY(EditDefaultsOnly, Category = "Game|Card Reveal", meta = (ClampMin = "0.0", UIMin = "0.0"))
+	float CardRevealDurationSeconds = 5.0f;
 
 	// 게임 시작 중복 호출 방지
 	bool bGameStartRequested = false;
