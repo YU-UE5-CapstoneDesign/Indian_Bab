@@ -52,6 +52,8 @@ public:
 	// 의자 상호작용 시 호출되어 몽타주 종료를 기다립니다.
 	void StartSitTransition(ASeatActor* TargetSeat);
 
+	void ApplySeatColor(const FLinearColor& Color);
+
 	// 착석 위치와 카메라 적용은 PC/VR 자식이 결정합니다.
 	virtual void InitSeatedAtSeat(ASeatActor* TargetSeat);
 

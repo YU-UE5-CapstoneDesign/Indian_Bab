@@ -21,6 +21,7 @@
 #include "Components/WidgetComponent.h"
 #include "DrawDebugHelpers.h"
 #include "Kismet/KismetMathLibrary.h"
+#include "Materials/MaterialInstanceDynamic.h"
 
 // Sets default values
 ALobbyCharacter::ALobbyCharacter()
@@ -857,4 +858,25 @@ void ALobbyCharacter::UpdateDeskRevolverCount(int32 TriggerCount)
 	}
 
 	DeskRevolver->UpdateFoldCountWidget(TriggerCount);
+}
+
+
+void ALobbyCharacter::ApplySeatColor(const FLinearColor& Color)
+{
+	if (!IsValid(ThirdPersonMetaHumanTorso))
+	{
+		return;
+	}
+
+	const int32 NumMaterials = ThirdPersonMetaHumanTorso->GetNumMaterials();
+
+	for (int32 i = 0; i < NumMaterials; ++i)
+	{
+		UMaterialInstanceDynamic* MID =ThirdPersonMetaHumanTorso->CreateAndSetMaterialInstanceDynamic(i);
+
+		if (MID)
+		{
+			MID->SetVectorParameterValue(FName(TEXT("diffuse_color_1")),Color);
+		}
+	}
 }
