@@ -106,8 +106,9 @@ void AMainGameMode::Logout(AController* Exiting)
     AMainPlayerState* LeavingPS = Exiting ? Cast<AMainPlayerState>(Exiting->PlayerState) : nullptr;
     const int32 LeavingPlayerId = LeavingPS ? LeavingPS->GetPlayerId() : INDEX_NONE;
     const bool bPlaying = MainGS && MainGS->CurrentGamePhase == EGamePhase::Playing;
+    const bool bCardRevealPhase = MainGS && MainGS->CurrentGamePhase == EGamePhase::CardReveal;
     const bool bResultPhase = MainGS && MainGS->CurrentGamePhase == EGamePhase::Result;
-    const bool bInGame = bPlaying || bResultPhase;
+    const bool bInGame = bPlaying || bCardRevealPhase || bResultPhase;
     const bool bLeavingTurn = bInGame && LeavingPlayerId != INDEX_NONE
         && MainGS->CurrentTurnPlayerId == LeavingPlayerId;
     const bool bLeavingCheckPlayer = bPlaying && LeavingPlayerId != INDEX_NONE
@@ -196,7 +197,22 @@ void AMainGameMode::Logout(AController* Exiting)
 		// 이탈 후 이번 라운드에 참여할 사람이 없다면 다음 라운드는 새 플레이어를 뽑습니다.
 		if (MainGS->AlivePlayerCount > 1 && UpdateActivePlayer(MainGS) == 0)
 			MainGS->CurrentPlayerIndex = INDEX_NONE;
-		if (bResultPhase && (MainGS->AlivePlayerCount <= 1 || bLeavingWinner))
+		if (bCardRevealPhase && (MainGS->AlivePlayerCount <= 1 || bLeavingWinner))
+		{
+			GetWorldTimerManager().ClearTimer(CardRevealTimerHandle);
+			for (APlayerState* PlayerState : MainGS->PlayerArray)
+			{
+				AMainPlayerState* PS = Cast<AMainPlayerState>(PlayerState);
+				if (AMainGamePlayerController* PC = PS ? Cast<AMainGamePlayerController>(PS->GetOwner()) : nullptr)
+				{
+					PC->Client_EndCardReveal();
+				}
+			}
+			CurrentWinnerPS = nullptr;
+			if (MainGS->AlivePlayerCount <= 1) EndGame(GetLastAlivePlayer());
+			else NextRound();
+		}
+		else if (bResultPhase && (MainGS->AlivePlayerCount <= 1 || bLeavingWinner))
 		{
 			// 발사 단계가 이탈로 중단되면 총을 즉시 책상으로 돌립니다.
 			ALobbyCharacter* WinnerCharacter = nullptr;
@@ -922,6 +938,7 @@ void AMainGameMode::NextRound()
 {
 	if (!HasAuthority()) return;
 	if (bGameEnded) return;
+	GetWorldTimerManager().ClearTimer(CardRevealTimerHandle);
 
 	AMainGameState* GS = GetGameState<AMainGameState>();
     if (!GS) return;
@@ -932,6 +949,8 @@ void AMainGameMode::NextRound()
 
 	// 다음 라운드 대비 GateState 초기화
 	GS -> SetNextRoundGameState();
+	// 카드 공개 중 잠근 베팅 입력을 새 라운드에서 다시 허용합니다.
+	GS->bTurnActionInProgress = false;
 
 
     // 이전 라운드의 기준 플레이어 폴드 상태 초기화
@@ -979,6 +998,7 @@ void AMainGameMode::EndGame(AMainPlayerState* WinnerPS)
 	if (!HasAuthority() || bGameEnded) return;
 
 	bGameEnded = true;
+	GetWorldTimerManager().ClearTimer(CardRevealTimerHandle);
 	GetWorldTimerManager().ClearTimer(TimerHandle);
 
 	AMainGameState* GS = GetGameState<AMainGameState>();
