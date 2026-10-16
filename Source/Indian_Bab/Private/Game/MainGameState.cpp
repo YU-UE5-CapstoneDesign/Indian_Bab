@@ -8,6 +8,7 @@
 #include "EngineUtils.h"
 #include "Blueprint/WidgetBlueprintLibrary.h"
 #include "Widget/MainGameWidget.h"
+#include "GameInstanceSubsystem/IndianBabGameInstance.h"
 
 AMainGameState::AMainGameState()
 {
@@ -208,6 +209,16 @@ void AMainGameState::OnRep_GamePhase()
 {
 	// 게임 페이즈에 따라 클라이언트에서 필요한 연출이나 UI 업데이트를 처리하는 곳입니다.
 	const bool bIsPlaying = (CurrentGamePhase == EGamePhase::Playing);
+
+	// 게임 진행 상태로 전환되면 BGM 변경
+	if (bIsPlaying)
+	{
+		if (UIndianBabGameInstance* GI =
+			Cast<UIndianBabGameInstance>(GetGameInstance()))
+		{
+			GI->PlayGameBGM();
+		}
+	}
 
 	// TODO: 페이즈 변경 시 연출 (예: Playing이 되면 로비 UI 숨기고 메인 게임 UI 띄우기, 조명 어둡게 하기 등)
 	if (CurrentGamePhase == EGamePhase::Starting)

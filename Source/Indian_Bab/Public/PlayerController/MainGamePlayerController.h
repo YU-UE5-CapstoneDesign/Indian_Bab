@@ -31,9 +31,6 @@ public:
     bool HasReceivedPlayMode() const { return bPlayModeReceived; }
     bool UsesVRPlayMode() const { return bUseVRPlayMode; }
 
-
-
-
     virtual void BeginPlay() override;
     virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
 
@@ -41,6 +38,14 @@ public:
     void CancelExitFromMainGame();
     void ShowExitConfirmation();
 	void ResumeAfterOptionsMenu();
+
+    // 폴드 시작 시 해당 플레이어에게만 호출
+    UFUNCTION(Client, Reliable)
+    void Client_BeginFoldAudio(int32 FoldCount);
+
+    // 서브 리볼버 격발 완료 시 해당 플레이어에게만 호출
+    UFUNCTION(Client, Reliable)
+    void Client_EndFoldAudio(bool bSurvived);
 
 private:
 	void ShowOptionsMenu();
