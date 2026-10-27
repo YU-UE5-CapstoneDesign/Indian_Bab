@@ -220,7 +220,7 @@ public:
 
 	// 상호작용 거리
 	UPROPERTY(EditDefaultsOnly, Category = "Interaction")
-	float InteractRange = 250.0f;
+	float InteractRange = 2500.0f;
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "PlayerNameWidget")
 	TObjectPtr<UWidgetComponent> NameWidgetComponent;
@@ -288,5 +288,7 @@ protected:
 
 	// 조준선 표시/숨김
 	void SetMainShotAimLineVisible(bool bVisible);
+
+	virtual void HoveringInteract();
 
 };

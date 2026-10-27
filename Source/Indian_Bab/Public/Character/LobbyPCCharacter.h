@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 #include "CoreMinimal.h"
 #include "Character/LobbyCharacter.h"
 #include "LobbyPCCharacter.generated.h"
@@ -11,6 +11,7 @@ class INDIAN_BAB_API ALobbyPCCharacter : public ALobbyCharacter
     GENERATED_BODY()
 public:
     ALobbyPCCharacter();
+    virtual void Tick(float DeltaTime) override;
     void Move(const FVector2D& Axis);
     void Look(const FVector2D& Axis, float Sensitivity);
     virtual void SetupPlayerInputComponent(UInputComponent* PlayerInputComponent) override;
@@ -51,6 +52,7 @@ protected:
     virtual void DrawMainShotAimLine() override;
 
 private:
+
     UPROPERTY(EditDefaultsOnly, Category = "PC|Aim")
     TSubclassOf<UPCCrosshairWidget> PCCrosshairWidgetClass;
 
@@ -69,4 +71,8 @@ private:
     UPROPERTY(EditDefaultsOnly, Category = "Input")
     TObjectPtr<UInputAction> IA_Interact;
     void OnInteract(const FInputActionValue& Value);
+    void DetectRevolver();
+    void SetOutline(AActor* Actor, bool bEnable);
+    UPROPERTY()
+    TObjectPtr<AActor> CurrentFocusedActor = nullptr;
 };

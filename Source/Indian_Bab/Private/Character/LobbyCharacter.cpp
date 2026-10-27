@@ -880,3 +880,7 @@ void ALobbyCharacter::ApplySeatColor(const FLinearColor& Color)
 		}
 	}
 }
+
+void ALobbyCharacter::HoveringInteract() {
+
+}
