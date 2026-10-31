@@ -6,6 +6,10 @@
 #include "GameFramework/Pawn.h"
 #include "GameInstanceSubsystem/ConnectivitySubsystem.h"
 #include "GameInstanceSubsystem/SessionSubsystem.h"
+#include "Components/AudioComponent.h"
+#include "Kismet/GameplayStatics.h"
+#include "Sound/SoundBase.h"
+#include "GameInstanceSubsystem/SettingSubsystem.h"
 
 DEFINE_LOG_CATEGORY_STATIC(LogIndianBabGI, Log, All);
 
@@ -72,6 +76,292 @@ TSubclassOf<APawn> UIndianBabGameInstance::GetPlayModePawnClass(bool bUseVR) con
     return bUseVR ? VRCharacterClass.LoadSynchronous() : PCCharacterClass.LoadSynchronous();
 }
 
+// =====================================
+// BGM 재생 시스템
+// =====================================
+
+void UIndianBabGameInstance::PlayMainBGM()
+{
+    EndFoldAudio(false);
+    StopMainRevolverClock();
+    PlayBGM(MainBGMSound.Get(), EBGMTrack::Main);
+}
+
+void UIndianBabGameInstance::PlayGameBGM()
+{
+    PlayBGM(GameBGMSound.Get(), EBGMTrack::Game);
+}
+
+void UIndianBabGameInstance::PlayVictoryBGM()
+{
+    EndFoldAudio(false);
+    StopMainRevolverClock();
+    PlayBGM(VictoryBGMSound.Get(), EBGMTrack::Victory);
+}
+
+void UIndianBabGameInstance::PlayBGM(
+    USoundBase* Sound,
+    EBGMTrack NewTrack)
+{
+    UWorld* World = GetWorld();
+
+    // 월드가 없거나 데디케이티드 서버이면 재생하지 않음
+    if (!World || World->GetNetMode() == NM_DedicatedServer)
+    {
+        return;
+    }
+
+    if (!Sound)
+    {
+        UE_LOG(
+            LogIndianBabGI,
+            Warning,
+            TEXT("[BGM] Sound asset is not assigned.")
+        );
+        return;
+    }
+
+    // 같은 음악이 재생 중이면 다시 시작하지 않음
+    if (ActiveTrack == NewTrack &&
+        IsValid(ActiveBGM) &&
+        ActiveBGM->IsPlaying())
+    {
+        return;
+    }
+
+    // 기존 음악 페이드 아웃
+    if (IsValid(ActiveBGM))
+    {
+        ActiveBGM->FadeOut(0.75f, 0.0f);
+    }
+
+    // 2D 음악 생성
+    // 맵을 이동해도 음악이 유지되도록 설정
+    UAudioComponent* NewAudio =
+        UGameplayStatics::CreateSound2D(
+            World,
+            Sound,
+            1.0f,
+            1.0f,
+            0.0f,
+            nullptr,
+            true,   // bPersistAcrossLevelTransition
+            true    // bAutoDestroy
+        );
+
+    if (!IsValid(NewAudio))
+    {
+        ActiveBGM = nullptr;
+        ActiveTrack = EBGMTrack::None;
+        return;
+    }
+
+    ActiveBGM = NewAudio;
+    ActiveTrack = NewTrack;
+
+    // 저장된 마스터 볼륨 읽기
+    float Volume = 1.0f;
+
+    if (USettingSubsystem* Settings =
+        GetSubsystem<USettingSubsystem>())
+    {
+        Volume = Settings->GetMasterVolume();
+    }
+
+    Volume = FMath::Clamp(Volume, 0.0f, 1.0f);
+
+    // 새 음악 페이드 인
+    ActiveBGM->FadeIn(0.75f, Volume);
+
+    UE_LOG(
+        LogIndianBabGI,
+        Log,
+        TEXT("[BGM] Playing: %s"),
+        *GetNameSafe(Sound)
+    );
+}
+
+void UIndianBabGameInstance::SetBGMVolume(float NewVolume)
+{
+    const float Volume =
+        FMath::Clamp(NewVolume, 0.0f, 1.0f);
+
+    // 메인 리볼버 시계 소리에도 볼륨 설정 적용
+    if (IsValid(MainRevolverClockAudio))
+    {
+        MainRevolverClockAudio->AdjustVolume(0.1f, Volume);
+    }
+
+    // 폴드 중이면 게임 BGM을 계속 0으로 유지
+    if (bFoldAudioActive)
+    {
+        if (IsValid(ActiveBGM) &&
+            ActiveTrack == EBGMTrack::Game)
+        {
+            ActiveBGM->AdjustVolume(0.1f, 0.0f);
+        }
+
+        if (IsValid(FoldHeartbeatAudio))
+        {
+            FoldHeartbeatAudio->AdjustVolume(0.1f, Volume);
+        }
+
+        return;
+    }
+
+    // 평상시 BGM 음량 조절
+    if (IsValid(ActiveBGM))
+    {
+        ActiveBGM->AdjustVolume(0.1f, Volume);
+    }
+}
+
+void UIndianBabGameInstance::BeginFoldAudio(int32 FoldCount)
+{
+    UWorld* World = GetWorld();
+
+    // 데디케이티드 서버에서는 오디오 재생하지 않음
+    if (!World || World->GetNetMode() == NM_DedicatedServer)
+    {
+        return;
+    }
+
+    // 중복 실행 방지
+    if (bFoldAudioActive)
+    {
+        return;
+    }
+
+    // 1~3번째는 slow, 4번째 이후는 fast
+    USoundBase* SelectedSound =
+        (FoldCount <= 3)
+        ? SlowHeartbeatSound.Get()
+        : FastHeartbeatSound.Get();
+
+    if (!IsValid(SelectedSound))
+    {
+        UE_LOG(LogTemp, Warning,
+            TEXT("[FoldAudio] Heartbeat sound is not assigned."));
+        return;
+    }
+
+    // 이전 심장소리 컴포넌트 정리
+    if (IsValid(FoldHeartbeatAudio))
+    {
+        FoldHeartbeatAudio->Stop();
+        FoldHeartbeatAudio = nullptr;
+    }
+
+    // 사용자 볼륨 설정
+    float Volume = 1.0f;
+
+    if (USettingSubsystem* Settings =
+        GetSubsystem<USettingSubsystem>())
+    {
+        Volume = Settings->GetMasterVolume();
+    }
+
+    Volume = FMath::Clamp(Volume, 0.0f, 1.0f);
+
+    // 심장소리는 폴드한 본인에게만 재생
+    // (호출은 해당 플레이어의 Client RPC에서 수행)
+    UAudioComponent* NewHeartbeat =
+        UGameplayStatics::CreateSound2D(
+            World,
+            SelectedSound,
+            1.0f,
+            1.0f,
+            0.0f,
+            nullptr,
+            false,
+            true
+        );
+
+    if (!IsValid(NewHeartbeat))
+    {
+        return;
+    }
+
+    FoldHeartbeatAudio = NewHeartbeat;
+    bFoldAudioActive = true;
+
+    // 기존 게임 BGM은 정지하지 않고 소리만 제거
+    if (IsValid(ActiveBGM) &&
+        ActiveTrack == EBGMTrack::Game)
+    {
+        ActiveBGM->AdjustVolume(0.2f, 0.0f);
+    }
+
+    // 심장소리 시작
+    FoldHeartbeatAudio->FadeIn(0.2f, Volume);
+
+    UE_LOG(LogTemp, Log,
+        TEXT("[FoldAudio] FoldCount=%d, Heartbeat=%s"),
+        FoldCount,
+        *GetNameSafe(SelectedSound));
+}
+
+void UIndianBabGameInstance::EndFoldAudio(bool bSurvived)
+{
+    UWorld* World = GetWorld();
+
+    if (!World || World->GetNetMode() == NM_DedicatedServer)
+    {
+        return;
+    }
+
+    const bool bWasFoldAudioActive = bFoldAudioActive;
+
+    bFoldAudioActive = false;
+
+    // 심장소리 종료
+    if (IsValid(FoldHeartbeatAudio))
+    {
+        FoldHeartbeatAudio->Stop();
+        FoldHeartbeatAudio = nullptr;
+    }
+
+    // 사용자 볼륨 설정
+    float Volume = 1.0f;
+
+    if (USettingSubsystem* Settings =
+        GetSubsystem<USettingSubsystem>())
+    {
+        Volume = Settings->GetMasterVolume();
+    }
+
+    Volume = FMath::Clamp(Volume, 0.0f, 1.0f);
+
+    // 게임 BGM 볼륨 복원
+    // 기존 재생 위치는 그대로 유지
+    if (bWasFoldAudioActive &&
+        IsValid(ActiveBGM) &&
+        ActiveTrack == EBGMTrack::Game)
+    {
+        ActiveBGM->AdjustVolume(0.25f, Volume);
+    }
+
+    // 사망했거나 애니메이션이 취소되었다면 종료
+    if (!bSurvived)
+    {
+        return;
+    }
+
+    // 생존했다면 sigh1 재생
+    if (IsValid(SighSound))
+    {
+        UGameplayStatics::PlaySound2D(
+            World,
+            SighSound.Get(),
+            Volume
+        );
+    }
+
+    UE_LOG(LogTemp, Log,
+        TEXT("[FoldAudio] Ended. Survived=%s"),
+        bSurvived ? TEXT("true") : TEXT("false"));
+}
+
 void UIndianBabGameInstance::Init()
 {
     Super::Init();
@@ -90,6 +380,24 @@ void UIndianBabGameInstance::Init()
 
 void UIndianBabGameInstance::Shutdown()
 {
+    StopMainRevolverClock();
+
+    if (IsValid(FoldHeartbeatAudio))
+    {
+        FoldHeartbeatAudio->Stop();
+        FoldHeartbeatAudio = nullptr;
+    }
+
+    bFoldAudioActive = false;
+
+    if (IsValid(ActiveBGM))
+    {
+        ActiveBGM->Stop();
+    }
+
+    ActiveBGM = nullptr;
+    ActiveTrack = EBGMTrack::None;
+
     if (GEngine)
     {
         GEngine->OnNetworkFailure().Remove(NetworkFailureHandle);
@@ -189,5 +497,65 @@ void UIndianBabGameInstance::OnTravelFailure(UWorld* /*World*/,
     if (UConnectivitySubsystem* Conn = GetSubsystem<UConnectivitySubsystem>())
     {
         Conn->ForceTriggerLost(FString::Printf(TEXT("TravelFailure:%s"), *TypeStr));
+    }
+}
+
+void UIndianBabGameInstance::StartMainRevolverClock()
+{
+    UWorld* World = GetWorld();
+
+    if (!World || World->GetNetMode() == NM_DedicatedServer)
+    {
+        return;
+    }
+
+    if (!IsValid(MainRevolverClockSound))
+    {
+        UE_LOG(LogTemp, Warning,
+            TEXT("[MainRevolverClock] Sound is not assigned."));
+        return;
+    }
+
+    // 시계 소리 중복 재생 방지
+    if (IsValid(MainRevolverClockAudio) &&
+        MainRevolverClockAudio->IsPlaying())
+    {
+        return;
+    }
+
+    float Volume = 1.0f;
+
+    if (USettingSubsystem* Settings =
+        GetSubsystem<USettingSubsystem>())
+    {
+        Volume = Settings->GetMasterVolume();
+    }
+
+    Volume = FMath::Clamp(Volume, 0.0f, 1.0f);
+
+    MainRevolverClockAudio =
+        UGameplayStatics::CreateSound2D(
+            World,
+            MainRevolverClockSound.Get(),
+            1.0f,
+            1.0f,
+            0.0f,
+            nullptr,
+            false,
+            true
+        );
+
+    if (IsValid(MainRevolverClockAudio))
+    {
+        MainRevolverClockAudio->FadeIn(0.2f, Volume);
+    }
+}
+
+void UIndianBabGameInstance::StopMainRevolverClock()
+{
+    if (IsValid(MainRevolverClockAudio))
+    {
+        MainRevolverClockAudio->FadeOut(0.2f, 0.0f);
+        MainRevolverClockAudio = nullptr;
     }
 }
