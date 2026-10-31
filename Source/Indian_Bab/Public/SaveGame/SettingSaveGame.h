@@ -29,6 +29,19 @@ public:
 	UPROPERTY()
 	uint32 ResolutionIndex;
 
+	// ResolutionIndex is kept only to migrate older GameSettings saves.
+	UPROPERTY()
+	int32 ResolutionWidth;
+
+	UPROPERTY()
+	int32 ResolutionHeight;
+
+	UPROPERTY()
+	int32 RefreshRate;
+
+	UPROPERTY()
+	bool bHasDisplayModeValues;
+
     /** 0: 전체 화면, 1: 테두리 없는 창모드, 2: 창 모드 */
     UPROPERTY()
     uint32 WindowModeIndex;
