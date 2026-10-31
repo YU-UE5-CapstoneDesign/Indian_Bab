@@ -136,8 +136,15 @@ private:
     void OnTravelFailure(UWorld* World,
         ETravelFailure::Type FailureType, const FString& ErrorString);
 
+    // VR Spectator Screen Mode 적용 — 모니터 미러창에서 한쪽 눈 화면이 잘림(SingleEyeCroppedToFill 기본값) 문제 해결용.
+    // PostLoadMapWithWorld 마다 재적용 → 메인메뉴 / 인게임 ServerTravel 후에도 일관 유지.
+    // HMD 미장착 / 데디는 자연 no-op.
+    void ApplyVRSpectatorScreenMode();
+    void OnPostLoadMap(UWorld* LoadedWorld);
+
     FDelegateHandle NetworkFailureHandle;
     FDelegateHandle TravelFailureHandle;
+    FDelegateHandle PostLoadMapHandle;
 
     // ClientWasKicked override 가 채우고 OnNetworkFailure 가 비움.
     FString PendingKickReason;

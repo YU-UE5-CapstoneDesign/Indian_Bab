@@ -56,7 +56,7 @@ public class Indian_Bab : ModuleRules
         // 전역 빌드 플래그 — Dev/Debug에서 켜고 끄는 mock 토글.
         // Shipping은 강제 0(실통신)으로 잠궈 사고 방지.
         int MatchmakerUseMock = 0;
-        int AntiCheatUseMock  = 1;
+        int AntiCheatUseMock  = 0;
 
         if (Target.Configuration == UnrealTargetConfiguration.Shipping)
         {
