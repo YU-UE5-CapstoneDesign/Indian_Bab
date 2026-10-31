@@ -10,6 +10,10 @@
 #include "Kismet/GameplayStatics.h"
 #include "Sound/SoundBase.h"
 #include "GameInstanceSubsystem/SettingSubsystem.h"
+#include "IXRTrackingSystem.h"
+#include "IHeadMountedDisplay.h"
+#include "ISpectatorScreenController.h"
+#include "UObject/UObjectGlobals.h"
 
 DEFINE_LOG_CATEGORY_STATIC(LogIndianBabGI, Log, All);
 
@@ -376,6 +380,12 @@ void UIndianBabGameInstance::Init()
         UE_LOG(LogIndianBabGI, Log,
             TEXT("[GI] NetworkFailure/TravelFailure 핸들러 바인딩 완료."));
     }
+
+    // 맵 로드(메인메뉴 / 데디 ClientTravel 후 인게임 / ServerTravel)마다
+    // Spectator Screen Mode 재적용. HMD 초기화가 GameInstance::Init 보다
+    // 나중일 수 있어 PostLoadMapWithWorld 시점으로 잡음.
+    PostLoadMapHandle = FCoreUObjectDelegates::PostLoadMapWithWorld.AddUObject(
+        this, &UIndianBabGameInstance::OnPostLoadMap);
 }
 
 void UIndianBabGameInstance::Shutdown()
@@ -404,7 +414,45 @@ void UIndianBabGameInstance::Shutdown()
         GEngine->OnTravelFailure().Remove(TravelFailureHandle);
     }
 
+    FCoreUObjectDelegates::PostLoadMapWithWorld.Remove(PostLoadMapHandle);
+
     Super::Shutdown();
+}
+
+void UIndianBabGameInstance::OnPostLoadMap(UWorld* /*LoadedWorld*/)
+{
+    ApplyVRSpectatorScreenMode();
+}
+
+void UIndianBabGameInstance::ApplyVRSpectatorScreenMode()
+{
+    if (IsRunningDedicatedServer())
+    {
+        return;
+    }
+    if (!GEngine || !GEngine->XRSystem.IsValid())
+    {
+        return;
+    }
+
+    IHeadMountedDisplay* HMD = GEngine->XRSystem->GetHMDDevice();
+    if (!HMD)
+    {
+        return;
+    }
+
+    ISpectatorScreenController* Spectator = HMD->GetSpectatorScreenController();
+    if (!Spectator)
+    {
+        return;
+    }
+
+    // SingleEyeLetterboxed: 한쪽 눈 화면 전체를 비율 유지하며 표시.
+    // 기본값 SingleEyeCroppedToFill 은 모니터 비율에 맞춰 가장자리를 잘라내서
+    // 데모 시연 시 UI/씬 가장자리가 잘림 → 데모 가시성 우선으로 letterboxed 채택.
+    Spectator->SetSpectatorScreenMode(ESpectatorScreenMode::SingleEyeLetterboxed);
+    UE_LOG(LogIndianBabGI, Log,
+        TEXT("[GI] VR Spectator Screen Mode → SingleEyeLetterboxed"));
 }
 
 void UIndianBabGameInstance::OnNetworkFailure(UWorld* /*World*/, UNetDriver* /*NetDriver*/,
