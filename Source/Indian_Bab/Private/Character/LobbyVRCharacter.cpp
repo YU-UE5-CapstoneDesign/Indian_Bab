@@ -24,6 +24,7 @@
 #include "Kismet/KismetMathLibrary.h"
 #include "Net/UnrealNetwork.h"
 #include "EnhancedInputComponent.h"
+#include "GameInstanceSubsystem/IndianBabGameInstance.h"
 
 namespace
 {
@@ -258,6 +259,16 @@ void ALobbyVRCharacter::Client_HideMainGameWidget_Implementation()
 void ALobbyVRCharacter::Client_ShowResultWidget_Implementation(const FString& WinnerName, int32 WinnerPlayerId)
 {
 	ShowResultWidget(WinnerName, WinnerPlayerId);
+
+	// VR 클라이언트에서도 최종 결과 BGM 재생
+	if (IsLocallyControlled())
+	{
+		if (UIndianBabGameInstance* GI =
+			Cast<UIndianBabGameInstance>(GetGameInstance()))
+		{
+			GI->PlayVictoryBGM();
+		}
+	}
 }
 
 void ALobbyVRCharacter::PressRightWidgetInteraction()
@@ -1190,4 +1201,6 @@ void ALobbyVRCharacter::OnAimMyselfMontageEnded(UAnimMontage* Montage, bool bInt
 	MetaHumanBodyAnimation->SetVisibility(false);
 	MetaHumanTorsoAnimation->SetVisibility(false);
 	MetaHumanFaceAnimation->SetVisibility(false);
+
+	Super::OnGrabGunMontageEnded(Montage, bInterrupted);
 }

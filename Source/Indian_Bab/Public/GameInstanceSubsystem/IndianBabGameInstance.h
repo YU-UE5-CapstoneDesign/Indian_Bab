@@ -7,6 +7,8 @@
 #include "IndianBabGameInstance.generated.h"
 
 class UNetDriver;
+class UAudioComponent;
+class USoundBase;
 
 /**
  * 프로젝트 커스텀 GameInstance.
@@ -34,6 +36,77 @@ public:
 
     virtual void Init() override;
     virtual void Shutdown() override;
+
+    // 메인 메뉴 및 로비 배경음악
+    UFUNCTION(BlueprintCallable, Category = "BGM")
+    void PlayMainBGM();
+
+    // 실제 게임 진행 배경음악
+    UFUNCTION(BlueprintCallable, Category = "BGM")
+    void PlayGameBGM();
+
+    // 최종 승리 배경음악
+    UFUNCTION(BlueprintCallable, Category = "BGM")
+    void PlayVictoryBGM();
+
+    // 기존 옵션 메뉴의 볼륨 설정 적용
+    UFUNCTION(BlueprintCallable, Category = "BGM")
+    void SetBGMVolume(float NewVolume);
+
+    // 폴드 횟수에 따라 심장소리 시작
+    UFUNCTION(BlueprintCallable, Category = "BGM|Fold")
+    void BeginFoldAudio(int32 FoldCount);
+
+    // 서브 리볼버 격발 완료
+    // 생존 시 한숨소리 재생
+    UFUNCTION(BlueprintCallable, Category = "BGM|Fold")
+    void EndFoldAudio(bool bSurvived);
+
+    // 체크 효과음
+    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Audio|BetAction")
+    TObjectPtr<USoundBase> CheckActionSound = nullptr;
+
+    // 폴드 효과음
+    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Audio|BetAction")
+    TObjectPtr<USoundBase> FoldActionSound = nullptr;
+
+    // 레이즈 효과음
+    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Audio|BetAction")
+    TObjectPtr<USoundBase> RaiseActionSound = nullptr;
+
+    // 첫 번째~세 번째 폴드에서 사용
+    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "BGM|Fold")
+    TObjectPtr<USoundBase> SlowHeartbeatSound = nullptr;
+
+    // 네 번째 이후 폴드에서 사용
+    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "BGM|Fold")
+    TObjectPtr<USoundBase> FastHeartbeatSound = nullptr;
+
+    // 생존했을 때 사용할 한숨소리
+    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "BGM|Fold")
+    TObjectPtr<USoundBase> SighSound = nullptr;
+
+    // 블루프린트에서 음악 에셋 지정
+    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "BGM")
+    TObjectPtr<USoundBase> MainBGMSound = nullptr;
+
+    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "BGM")
+    TObjectPtr<USoundBase> GameBGMSound = nullptr;
+
+    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "BGM")
+    TObjectPtr<USoundBase> VictoryBGMSound = nullptr;
+
+    // 메인 리볼버 격발 시계 소리 시작
+    UFUNCTION(BlueprintCallable, Category = "Audio|MainRevolver")
+    void StartMainRevolverClock();
+
+    // 메인 리볼버 시계 소리 종료
+    UFUNCTION(BlueprintCallable, Category = "Audio|MainRevolver")
+    void StopMainRevolverClock();
+
+    // 블루프린트에서 시계 소리 지정
+    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Audio|MainRevolver")
+    TObjectPtr<USoundBase> MainRevolverClockSound = nullptr;
 
     // 서버가 ClientWasKicked RPC 로 보낸 사유를 클라 측에서 잠시 stash.
     // 직후 NetConnection close 로 OnNetworkFailure(ConnectionLost) 가 떨어지면
@@ -68,4 +141,33 @@ private:
 
     // ClientWasKicked override 가 채우고 OnNetworkFailure 가 비움.
     FString PendingKickReason;
+
+    // 현재 재생 중인 음악 종류
+    enum class EBGMTrack : uint8
+    {
+        None,
+        Main,
+        Game,
+        Victory
+    };
+
+    // 현재 음악을 재생하는 AudioComponent
+    UPROPERTY(Transient)
+    TObjectPtr<UAudioComponent> ActiveBGM = nullptr;
+
+    EBGMTrack ActiveTrack = EBGMTrack::None;
+
+    // 현재 폴드 심장소리
+    UPROPERTY(Transient)
+    TObjectPtr<UAudioComponent> FoldHeartbeatAudio = nullptr;
+
+    // 현재 재생 중인 메인 리볼버 시계 소리
+    UPROPERTY(Transient)
+    TObjectPtr<UAudioComponent> MainRevolverClockAudio = nullptr;
+
+    // 심장소리 재생 상태
+    bool bFoldAudioActive = false;
+
+    // 실제 BGM 재생 처리 함수
+    void PlayBGM(USoundBase* Sound, EBGMTrack NewTrack);
 };

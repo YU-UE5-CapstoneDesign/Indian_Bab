@@ -2,6 +2,7 @@
 #include "SaveGame/SettingSaveGame.h"
 #include "Kismet/GameplayStatics.h"
 #include "GameFramework/GameUserSettings.h"
+#include "GameInstanceSubsystem/IndianBabGameInstance.h"
 
 
 void USettingSubsystem::Initialize(FSubsystemCollectionBase& Collection)
@@ -145,7 +146,21 @@ float USettingSubsystem::GetDefaultMasterVolume() const
 
 void USettingSubsystem::SetMasterVolume(float NewValue)
 {
-    if (CurrentSettings) CurrentSettings->MasterVolume = NewValue;
+    if (!CurrentSettings)
+    {
+        return;
+    }
+
+    const float Volume = FMath::Clamp(NewValue, 0.0f, 1.0f);
+
+    CurrentSettings->MasterVolume = Volume;
+
+    // 현재 재생 중인 BGM 볼륨 적용
+    if (UIndianBabGameInstance* GI =
+        Cast<UIndianBabGameInstance>(GetGameInstance()))
+    {
+        GI->SetBGMVolume(Volume);
+    }
 }
 
 
