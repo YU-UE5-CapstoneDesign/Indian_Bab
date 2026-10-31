@@ -62,6 +62,17 @@ public:
     UFUNCTION(BlueprintCallable, Category = "BGM|Fold")
     void EndFoldAudio(bool bSurvived);
 
+    // 체크 효과음
+    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Audio|BetAction")
+    TObjectPtr<USoundBase> CheckActionSound = nullptr;
+
+    // 폴드 효과음
+    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Audio|BetAction")
+    TObjectPtr<USoundBase> FoldActionSound = nullptr;
+
+    // 레이즈 효과음
+    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Audio|BetAction")
+    TObjectPtr<USoundBase> RaiseActionSound = nullptr;
 
     // 첫 번째~세 번째 폴드에서 사용
     UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "BGM|Fold")
@@ -84,6 +95,18 @@ public:
 
     UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "BGM")
     TObjectPtr<USoundBase> VictoryBGMSound = nullptr;
+
+    // 메인 리볼버 격발 시계 소리 시작
+    UFUNCTION(BlueprintCallable, Category = "Audio|MainRevolver")
+    void StartMainRevolverClock();
+
+    // 메인 리볼버 시계 소리 종료
+    UFUNCTION(BlueprintCallable, Category = "Audio|MainRevolver")
+    void StopMainRevolverClock();
+
+    // 블루프린트에서 시계 소리 지정
+    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Audio|MainRevolver")
+    TObjectPtr<USoundBase> MainRevolverClockSound = nullptr;
 
     // 서버가 ClientWasKicked RPC 로 보낸 사유를 클라 측에서 잠시 stash.
     // 직후 NetConnection close 로 OnNetworkFailure(ConnectionLost) 가 떨어지면
@@ -137,6 +160,10 @@ private:
     // 현재 폴드 심장소리
     UPROPERTY(Transient)
     TObjectPtr<UAudioComponent> FoldHeartbeatAudio = nullptr;
+
+    // 현재 재생 중인 메인 리볼버 시계 소리
+    UPROPERTY(Transient)
+    TObjectPtr<UAudioComponent> MainRevolverClockAudio = nullptr;
 
     // 심장소리 재생 상태
     bool bFoldAudioActive = false;

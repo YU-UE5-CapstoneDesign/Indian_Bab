@@ -83,6 +83,7 @@ TSubclassOf<APawn> UIndianBabGameInstance::GetPlayModePawnClass(bool bUseVR) con
 void UIndianBabGameInstance::PlayMainBGM()
 {
     EndFoldAudio(false);
+    StopMainRevolverClock();
     PlayBGM(MainBGMSound.Get(), EBGMTrack::Main);
 }
 
@@ -94,6 +95,7 @@ void UIndianBabGameInstance::PlayGameBGM()
 void UIndianBabGameInstance::PlayVictoryBGM()
 {
     EndFoldAudio(false);
+    StopMainRevolverClock();
     PlayBGM(VictoryBGMSound.Get(), EBGMTrack::Victory);
 }
 
@@ -183,6 +185,12 @@ void UIndianBabGameInstance::SetBGMVolume(float NewVolume)
 {
     const float Volume =
         FMath::Clamp(NewVolume, 0.0f, 1.0f);
+
+    // 메인 리볼버 시계 소리에도 볼륨 설정 적용
+    if (IsValid(MainRevolverClockAudio))
+    {
+        MainRevolverClockAudio->AdjustVolume(0.1f, Volume);
+    }
 
     // 폴드 중이면 게임 BGM을 계속 0으로 유지
     if (bFoldAudioActive)
@@ -372,6 +380,8 @@ void UIndianBabGameInstance::Init()
 
 void UIndianBabGameInstance::Shutdown()
 {
+    StopMainRevolverClock();
+
     if (IsValid(FoldHeartbeatAudio))
     {
         FoldHeartbeatAudio->Stop();
@@ -487,5 +497,65 @@ void UIndianBabGameInstance::OnTravelFailure(UWorld* /*World*/,
     if (UConnectivitySubsystem* Conn = GetSubsystem<UConnectivitySubsystem>())
     {
         Conn->ForceTriggerLost(FString::Printf(TEXT("TravelFailure:%s"), *TypeStr));
+    }
+}
+
+void UIndianBabGameInstance::StartMainRevolverClock()
+{
+    UWorld* World = GetWorld();
+
+    if (!World || World->GetNetMode() == NM_DedicatedServer)
+    {
+        return;
+    }
+
+    if (!IsValid(MainRevolverClockSound))
+    {
+        UE_LOG(LogTemp, Warning,
+            TEXT("[MainRevolverClock] Sound is not assigned."));
+        return;
+    }
+
+    // 시계 소리 중복 재생 방지
+    if (IsValid(MainRevolverClockAudio) &&
+        MainRevolverClockAudio->IsPlaying())
+    {
+        return;
+    }
+
+    float Volume = 1.0f;
+
+    if (USettingSubsystem* Settings =
+        GetSubsystem<USettingSubsystem>())
+    {
+        Volume = Settings->GetMasterVolume();
+    }
+
+    Volume = FMath::Clamp(Volume, 0.0f, 1.0f);
+
+    MainRevolverClockAudio =
+        UGameplayStatics::CreateSound2D(
+            World,
+            MainRevolverClockSound.Get(),
+            1.0f,
+            1.0f,
+            0.0f,
+            nullptr,
+            false,
+            true
+        );
+
+    if (IsValid(MainRevolverClockAudio))
+    {
+        MainRevolverClockAudio->FadeIn(0.2f, Volume);
+    }
+}
+
+void UIndianBabGameInstance::StopMainRevolverClock()
+{
+    if (IsValid(MainRevolverClockAudio))
+    {
+        MainRevolverClockAudio->FadeOut(0.2f, 0.0f);
+        MainRevolverClockAudio = nullptr;
     }
 }

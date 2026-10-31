@@ -9,6 +9,9 @@
 #include "Blueprint/WidgetBlueprintLibrary.h"
 #include "Widget/MainGameWidget.h"
 #include "GameInstanceSubsystem/IndianBabGameInstance.h"
+#include "GameInstanceSubsystem/SettingSubsystem.h"
+#include "Kismet/GameplayStatics.h"
+#include "Sound/SoundBase.h"
 
 AMainGameState::AMainGameState()
 {
@@ -115,6 +118,9 @@ void AMainGameState::ChangeCurrentBetInfo(EBetAction NewAction, int32 RaiseCount
 	}
 
 	OnRep_CurrentBetInfo();
+
+	// 승인된 베팅 행동의 효과음 재생
+	Multicast_PlayBetActionSound(NewAction);
 }
 
 void AMainGameState::SetMainRevolverChamberCount(int32 NewChamberCount)
@@ -300,6 +306,22 @@ void AMainGameState::OnRep_MainRevolverChamberCount()
 
 void AMainGameState::OnRep_MainShotInfo()
 {
+	if (UIndianBabGameInstance* GI =
+		Cast<UIndianBabGameInstance>(GetGameInstance()))
+	{
+		// 메인 리볼버 격발 단계 시작
+		if (MainShotPlayerId != INDEX_NONE &&
+			MainShotTotalCount > 0)
+		{
+			GI->StartMainRevolverClock();
+		}
+		// 메인 리볼버 격발 단계 종료
+		else
+		{
+			GI->StopMainRevolverClock();
+		}
+	}
+
 	OnTurnInfoChanged.Broadcast();
 }
 
@@ -393,4 +415,57 @@ void AMainGameState::OnRep_LatestBetLog()
 			UE_LOG(LogTemp, Log, TEXT("[BetLog] OnRep updated %d widget(s): %s"), UpdatedWidgetCount, *LogMessage);
 		}
 	}
+}
+
+void AMainGameState::Multicast_PlayBetActionSound_Implementation(
+	EBetAction Action)
+{
+	if (GetNetMode() == NM_DedicatedServer)
+	{
+		return;
+	}
+
+	UIndianBabGameInstance* GI =
+		Cast<UIndianBabGameInstance>(GetGameInstance());
+
+	if (!GI)
+	{
+		return;
+	}
+
+	USoundBase* SelectedSound = nullptr;
+
+	switch (Action)
+	{
+	case EBetAction::Fold:
+		SelectedSound = GI->FoldActionSound.Get();
+		break;
+
+	case EBetAction::CheckCall:
+		SelectedSound = GI->CheckActionSound.Get();
+		break;
+
+	case EBetAction::Raise:
+		SelectedSound = GI->RaiseActionSound.Get();
+		break;
+
+	default:
+		return;
+	}
+
+	if (!SelectedSound)
+	{
+		return;
+	}
+
+	float Volume = 1.0f;
+
+	if (USettingSubsystem* Settings =
+		GI->GetSubsystem<USettingSubsystem>())
+	{
+		Volume = FMath::Clamp(
+			Settings->GetMasterVolume(), 0.0f, 1.0f);
+	}
+
+	UGameplayStatics::PlaySound2D(this, SelectedSound, Volume);
 }

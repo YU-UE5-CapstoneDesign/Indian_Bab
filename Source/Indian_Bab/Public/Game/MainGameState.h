@@ -145,6 +145,9 @@ public:
 	UPROPERTY(ReplicatedUsing = OnRep_LatestBetLog)
 	FBetLogData LatestBetLog;
 
+	// 모든 플레이어에게 베팅 행동 효과음 재생
+	UFUNCTION(NetMulticast, Reliable)
+	void Multicast_PlayBetActionSound(EBetAction Action);
 
 	// 서버가 GamePhase를 변경할 때 호출
 	void SetGamePhase(EGamePhase NewPhase);
