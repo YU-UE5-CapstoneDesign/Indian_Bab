@@ -262,12 +262,18 @@ void AMainGameState::OnRep_GamePhase()
 void AMainGameState::OnRep_CurrentBetInfo()
 {
 	const TCHAR* ActionStr = TEXT("UnKnown");
-    if (CurrentBetInfo.CurrentBetAction == EBetAction::Raise)
-        ActionStr = TEXT("Raise");
-    else if (CurrentBetInfo.CurrentBetAction == EBetAction::CheckCall)
-        ActionStr = TEXT("CheckCall");
-    else if (CurrentBetInfo.CurrentBetAction == EBetAction::Fold)
-        ActionStr = TEXT("Fold");
+	if (CurrentBetInfo.CurrentBetAction == EBetAction::Raise)
+	{
+		ActionStr = TEXT("Raise");
+	}
+	else if (CurrentBetInfo.CurrentBetAction == EBetAction::CheckCall)
+	{
+		ActionStr = TEXT("CheckCall");
+	}
+	else if (CurrentBetInfo.CurrentBetAction == EBetAction::Fold)
+	{
+		ActionStr = TEXT("Fold");
+	}
 	
 	// 게임 페이즈에 따라 메인 리볼버 위젯의 탄창 수 표시 업데이트
 	UpdateMainRevolverWidget(CurrentBulletCount, MainRevolverChamberCount);

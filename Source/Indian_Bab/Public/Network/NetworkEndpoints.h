@@ -7,7 +7,7 @@
  *
  * 외부/내부 2채널:
  *   External — 클라/워치독 → Nginx(443, TLS) → MM/AC. 공인 도메인 진입.
- *   Internal — 데디 S2S(loopback). Nginx `/internal/*` deny 정책상 외부 호출 금지.
+ *   Internal — 데디 S2S(loopback). Nginx `/internal/` 경로 deny 정책상 외부 호출 금지.
  *
  * Host/Port/UseTls는 빌드타임 하드코딩 — 값은 Indian_Bab.Build.cs의
  *   INDIANBAB_{MM,AC}_{EXTERNAL,INTERNAL}_{HOST,PORT,USE_TLS}
