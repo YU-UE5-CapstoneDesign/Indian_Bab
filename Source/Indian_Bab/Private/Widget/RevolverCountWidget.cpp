@@ -18,7 +18,7 @@ void URevolverCountWidget::UpdateFoldCount(int32 Count)
 
 void URevolverCountWidget::SetPlayingPhase(bool bIsPlaying)
 {
-	// Playing �������� ���� ���� ��ü�� ���̰� ��
-	// �տ� ���� �޷����� �� �ؽ�Ʈ�� ���̸� ����ϹǷ� Playing������ ǥ��
+	// Playing 페이즈일 때만 위젯 전체를 보이게 함
+	// 손에 총이 달려있을 때 텍스트가 보이면 어색하므로 Playing에서만 표시
 	SetVisibility(bIsPlaying ? ESlateVisibility::Visible : ESlateVisibility::Hidden);
 }

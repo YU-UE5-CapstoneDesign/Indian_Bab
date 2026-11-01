@@ -9,7 +9,7 @@
 #include "Widget/BetProgressWidget.h"
 #include "Widget/TurnInfoWidget.h"
 #include "Game/MainGameState.h"
-#include "PlayerController\MainGamePlayerController.h"
+#include "PlayerController/MainGamePlayerController.h"
 
 void UMainGameWidget::UpdateCenterBetLog(const FString& Message)
 {
