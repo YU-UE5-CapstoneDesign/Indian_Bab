@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 
 #include "CoreMinimal.h"
 #include "GameFramework/Actor.h"
@@ -97,6 +97,7 @@ public:
 	UPROPERTY(EditDefaultsOnly, Category = "Sound")
 	TObjectPtr<USoundBase> DryFireSound;
 
+	void ShowFoldCount(bool bIsDetected);
 protected:
 	// 게임이 시작되거나 이 무기가 스폰될 때 호출됩니다.
 	virtual void BeginPlay() override;

@@ -216,7 +216,7 @@ private:
 	void ApplyVRWidgetComponentState(UWidgetComponent* WidgetComponent, bool bActive);
 	bool DoesWidgetComponentMatchName(const UWidgetComponent* WidgetComponent, FName ComponentName);
 	void UpdateVRPointers();
-	void UpdateLaserPointer(const UMotionControllerComponent* AimController, const TCHAR* PointerName) const;
+	void UpdateLaserPointer(const UMotionControllerComponent* AimController, const TCHAR* PointerName) ;
 	void DrawSeatDebugCapsule() const;
 	virtual void PlayGrabGunMontage(EGunHoldReason Reason) override;
 	void OnAimMyselfMontageEnded(UAnimMontage* Montage, bool bInterrupted);

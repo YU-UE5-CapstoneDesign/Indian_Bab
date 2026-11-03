@@ -52,6 +52,8 @@ public:
 	// 의자 상호작용 시 호출되어 몽타주 종료를 기다립니다.
 	void StartSitTransition(ASeatActor* TargetSeat);
 
+	void ApplySeatColor(const FLinearColor& Color);
+
 	// 착석 위치와 카메라 적용은 PC/VR 자식이 결정합니다.
 	virtual void InitSeatedAtSeat(ASeatActor* TargetSeat);
 
@@ -218,7 +220,7 @@ public:
 
 	// 상호작용 거리
 	UPROPERTY(EditDefaultsOnly, Category = "Interaction")
-	float InteractRange = 250.0f;
+	float InteractRange = 2500.0f;
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "PlayerNameWidget")
 	TObjectPtr<UWidgetComponent> NameWidgetComponent;
@@ -284,7 +286,12 @@ protected:
 
 	EGunHoldReason FinishedReason;
 
+	UPROPERTY()
+	TObjectPtr<AActor> CurrentFocusedRevolver = nullptr;
+
 	// 조준선 표시/숨김
 	void SetMainShotAimLineVisible(bool bVisible);
+
+	void SetOutline(AActor* Actor, bool bEnable);
 
 };

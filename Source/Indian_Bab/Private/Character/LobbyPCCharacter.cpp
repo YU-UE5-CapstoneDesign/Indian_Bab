@@ -1,4 +1,4 @@
-#include "Character/LobbyPCCharacter.h"
+﻿#include "Character/LobbyPCCharacter.h"
 #include "Camera/CameraComponent.h"
 #include "Camera/PlayerCameraManager.h"
 #include "Components/CapsuleComponent.h"
@@ -14,6 +14,12 @@
 #include "Animation/AnimInstance.h"
 #include "PCCrosshairWidget.h"
 #include "UObject/ConstructorHelpers.h"
+#include "Components/PrimitiveComponent.h"
+
+void ALobbyPCCharacter::Tick(float DeltaTime) {
+	Super::Tick(DeltaTime);
+	DetectRevolver();
+}
 
 // 기존 카메라와 메시를 재사용하고 PC 입력에 필요한 기본값을 설정합니다.
 ALobbyPCCharacter::ALobbyPCCharacter()
@@ -188,6 +194,7 @@ void ALobbyPCCharacter::OnInteract(const FInputActionValue& Value)
 			ServerInteract(HitActor);
 		}
 	}
+
 }
 
 void ALobbyPCCharacter::UpdateAimFromView()
@@ -365,3 +372,45 @@ void ALobbyPCCharacter::OnSeatedCameraReady(const FRotator& SeatRotation)
     if (!CameraComponent) return;
     ApplySeatedCamera(CameraComponent->GetForwardVector().Rotation(), SeatRotation);
 }
+
+void ALobbyPCCharacter::DetectRevolver() {
+	FVector StartLoc = CameraComponent->GetComponentLocation();
+	FVector EndLoc = StartLoc +(CameraComponent->GetForwardVector() * InteractRange);
+
+	FHitResult HitResult;
+	FCollisionQueryParams QueryParams;
+	QueryParams.AddIgnoredActor(this);
+
+	bool bHit = GetWorld()->LineTraceSingleByChannel(
+		HitResult,	
+		StartLoc,
+		EndLoc,
+		ECC_Visibility,
+		QueryParams
+	);
+
+	AActor* HitActor = bHit ? HitResult.GetActor() : nullptr;
+
+	AActor* NewFocusedActor = nullptr;
+
+	if (IsValid(HitActor) && HitActor->IsA<ARevolver>())
+	{
+		NewFocusedActor = HitActor;
+	}
+
+	if (CurrentFocusedRevolver != NewFocusedActor)
+	{
+		if (IsValid(CurrentFocusedRevolver))
+		{
+			SetOutline(CurrentFocusedRevolver, false);
+		}
+
+		CurrentFocusedRevolver = NewFocusedActor;
+
+		if (IsValid(CurrentFocusedRevolver))
+		{
+			SetOutline(CurrentFocusedRevolver, true);
+		}
+	}
+}
+
