@@ -32,6 +32,12 @@ void AMainMenuPlayerController::BeginPlay()
 	if (!IsLocalPlayerController())
 		return;
 
+	// 메인 메뉴 BGM 재생
+	if (UIndianBabGameInstance* GI = Cast<UIndianBabGameInstance>(GetGameInstance()))
+	{
+		GI->PlayMainBGM();
+	}
+
 	ApplyMainMenuMappingContext();
     // 기본 Pawn의 초기화가 끝난 뒤 선택창 또는 기존 메뉴를 엽니다.
     GetWorldTimerManager().SetTimerForNextTick(this, &AMainMenuPlayerController::BeginPlayModeSelection);

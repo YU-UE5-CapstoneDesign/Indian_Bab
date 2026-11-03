@@ -89,6 +89,12 @@ void AMainGameMode::HandleFoldAction(AMainGamePlayerController* RequestPC)
 	ALobbyCharacter* Character = Cast<ALobbyCharacter>(RequestPC->GetPawn());
 	if (Character)
 	{
+		// 현재까지 서브 리볼버를 당긴 횟수 + 1
+		const int32 NextFoldCount = PS->TotalTriggerCount + 1;
+
+		// 폴드한 플레이어에게만 심장소리 시작
+		RequestPC->Client_BeginFoldAudio(NextFoldCount);
+
 		Character->SetActiveRevolver(Character->DeskRevolver);
 		Character->Multicast_PlayGrabGunMontage(EGunHoldReason::Fold);
 		return;
@@ -96,6 +102,8 @@ void AMainGameMode::HandleFoldAction(AMainGamePlayerController* RequestPC)
 
 	UE_LOG(LogTemp, Warning, TEXT("[GM] Player %d has no fold character. Resolving fold immediately."), PS->GetPlayerId());
 	bool PlayerAlive = PS -> ChangeSubRevolver();
+	RequestPC->Client_EndFoldAudio(PlayerAlive);
+
 	if(PlayerAlive)
 	{
 		UE_LOG(LogTemp, Warning, TEXT("[GM] Player %d survived by sub revolver"), PS ->GetPlayerId());
@@ -294,6 +302,14 @@ void AMainGameMode::HandleFoldMontageFinished(ALobbyCharacter* Character)
 		{
 			SubRevolver->Multicast_PlayFireSound();
 		}
+	}
+
+	// 서브 리볼버 격발 완료
+	// 해당 플레이어에게만 심장소리 종료 및 한숨 처리
+	if (AMainGamePlayerController* FoldPC =
+		Cast<AMainGamePlayerController>(Character->GetController()))
+	{
+		FoldPC->Client_EndFoldAudio(PlayerAlive);
 	}
 
 	if (PlayerAlive)

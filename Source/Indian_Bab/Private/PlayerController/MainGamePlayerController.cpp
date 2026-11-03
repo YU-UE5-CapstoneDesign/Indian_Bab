@@ -69,6 +69,13 @@ void AMainGamePlayerController::BeginPlay()
     if(!IsLocalPlayerController()) 
         return;
 
+    // 로비에서도 메인 BGM 사용
+    if (UIndianBabGameInstance* GI =
+        Cast<UIndianBabGameInstance>(GetGameInstance()))
+    {
+        GI->PlayMainBGM();
+    }
+
     ResolveLocalPlayMode();
     CreateMainGameWidget();
     CreateDeckLeftWidget();
@@ -1055,6 +1062,13 @@ void AMainGamePlayerController::Client_ShowPCResultWidget_Implementation(const F
 {
     if (!IsLocalController() || Cast<ALobbyVRCharacter>(GetPawn())) return;
 
+    // 최종 게임 결과 시 승리 BGM 재생
+    if (UIndianBabGameInstance* GI =
+        Cast<UIndianBabGameInstance>(GetGameInstance()))
+    {
+        GI->PlayVictoryBGM();
+    }
+
     if (!PCResultWidgetClass)
     {
         UE_LOG(LogTemp, Error, TEXT("PCResultWidgetClass is not assigned."));
@@ -1212,5 +1226,36 @@ void AMainGamePlayerController::ApplyLocalPlayMode()
     else
     {
         EnterUIMode();
+    }
+}
+
+void AMainGamePlayerController::Client_BeginFoldAudio_Implementation(
+    int32 FoldCount)
+{
+    if (!IsLocalController())
+    {
+        return;
+    }
+
+    if (UIndianBabGameInstance* GI =
+        Cast<UIndianBabGameInstance>(GetGameInstance()))
+    {
+        GI->BeginFoldAudio(FoldCount);
+    }
+}
+
+
+void AMainGamePlayerController::Client_EndFoldAudio_Implementation(
+    bool bSurvived)
+{
+    if (!IsLocalController())
+    {
+        return;
+    }
+
+    if (UIndianBabGameInstance* GI =
+        Cast<UIndianBabGameInstance>(GetGameInstance()))
+    {
+        GI->EndFoldAudio(bSurvived);
     }
 }

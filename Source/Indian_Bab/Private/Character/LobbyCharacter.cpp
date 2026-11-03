@@ -668,6 +668,15 @@ void ALobbyCharacter::OnGrabGunMontageEnded(UAnimMontage* Montage, bool bInterru
 {
 	if (bInterrupted)
 	{
+		if (HasAuthority() && GunHoldReason == EGunHoldReason::Fold)
+		{
+			if (AMainGamePlayerController* PC =
+				Cast<AMainGamePlayerController>(GetController()))
+			{
+				PC->Client_EndFoldAudio(false);
+			}
+		}
+
 		if (HasAuthority() && GunHoldReason == EGunHoldReason::Win)
 		{
 			bMainRevolverGrabInProgress = false;
