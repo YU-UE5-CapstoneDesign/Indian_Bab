@@ -352,12 +352,14 @@ void ALobbyCharacter::UpdatePlayerNameColor()
 				if (GS->CurrentTurnPlayerId == PS->GetPlayerId())
 				{
 					TargetColor = Widget->ActiveTurnColor;
+					Widget->SetTurnImage(true);
 					UE_LOG(LogTemp, Warning, TEXT("[LobbyChar] Player %d is in turn - Name Color: Blue"), PS->GetPlayerId());
 				}
 				// 그 외는 기본색
 				else
 				{
 					TargetColor = Widget->DefaultColor;
+					Widget->SetTurnImage(false);
 					UE_LOG(LogTemp, Warning, TEXT("[LobbyChar] Player %d is idle - Name Color: Default"), PS->GetPlayerId());
 				}
 			}
@@ -881,6 +883,11 @@ void ALobbyCharacter::ApplySeatColor(const FLinearColor& Color)
 	}
 }
 
-void ALobbyCharacter::HoveringInteract() {
+void ALobbyCharacter::SetOutline(AActor* Actor, bool bEnable)
+{
+	ARevolver* Revolver = Cast<ARevolver>(Actor);
 
+	Revolver->WeaponMesh->SetRenderCustomDepth(bEnable);
+	if (Revolver->ActorHasTag(FName("SubRevolver")))
+		Revolver->ShowFoldCount(bEnable);
 }

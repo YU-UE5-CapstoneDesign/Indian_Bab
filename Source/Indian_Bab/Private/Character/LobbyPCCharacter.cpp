@@ -382,7 +382,7 @@ void ALobbyPCCharacter::DetectRevolver() {
 	QueryParams.AddIgnoredActor(this);
 
 	bool bHit = GetWorld()->LineTraceSingleByChannel(
-		HitResult,
+		HitResult,	
 		StartLoc,
 		EndLoc,
 		ECC_Visibility,
@@ -398,27 +398,19 @@ void ALobbyPCCharacter::DetectRevolver() {
 		NewFocusedActor = HitActor;
 	}
 
-	if (CurrentFocusedActor != NewFocusedActor)
+	if (CurrentFocusedRevolver != NewFocusedActor)
 	{
-		if (IsValid(CurrentFocusedActor))
+		if (IsValid(CurrentFocusedRevolver))
 		{
-			SetOutline(CurrentFocusedActor, false);
+			SetOutline(CurrentFocusedRevolver, false);
 		}
 
-		CurrentFocusedActor = NewFocusedActor;
+		CurrentFocusedRevolver = NewFocusedActor;
 
-		if (IsValid(CurrentFocusedActor))
+		if (IsValid(CurrentFocusedRevolver))
 		{
-			SetOutline(CurrentFocusedActor, true);
+			SetOutline(CurrentFocusedRevolver, true);
 		}
 	}
 }
 
-void ALobbyPCCharacter::SetOutline(AActor* Actor, bool bEnable)
-{
-	ARevolver* Revolver = Cast<ARevolver>(Actor);
-
-	Revolver->WeaponMesh->SetRenderCustomDepth(bEnable);
-	if (Revolver->ActorHasTag(FName("SubRevolver")))
-		Revolver->ShowFoldCount(bEnable);
-}

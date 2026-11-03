@@ -744,12 +744,12 @@ void ALobbyVRCharacter::UpdateVRPointers()
 	{
 		return;
 	}
-
-	UpdateLaserPointer(MotionControllerRightAim, TEXT("Right"));
 	UpdateLaserPointer(MotionControllerLeftAim, TEXT("Left"));
+	UpdateLaserPointer(MotionControllerRightAim, TEXT("Right"));
+
 }
 
-void ALobbyVRCharacter::UpdateLaserPointer(const UMotionControllerComponent* AimController, const TCHAR* PointerName) const
+void ALobbyVRCharacter::UpdateLaserPointer(const UMotionControllerComponent* AimController, const TCHAR* PointerName) 
 {
 	if (!AimController || !GetWorld() || !bShowVRPointer)
 	{
@@ -783,6 +783,34 @@ void ALobbyVRCharacter::UpdateLaserPointer(const UMotionControllerComponent* Aim
 		0.0f,
 		0,
 		LaserThickness);
+
+	AActor* NewHitRevolver = nullptr;
+
+	if (bHit)
+	{
+		AActor* HitActor = HitResult.GetActor();
+
+		if (IsValid(HitActor) && HitActor->IsA<ARevolver>())
+		{
+			NewHitRevolver = HitActor;
+
+		}
+	}
+
+	if (CurrentFocusedRevolver != NewHitRevolver)
+	{
+		if (IsValid(CurrentFocusedRevolver))
+		{
+			SetOutline(CurrentFocusedRevolver, false);
+		}
+
+		CurrentFocusedRevolver = NewHitRevolver;
+
+		if (IsValid(CurrentFocusedRevolver))
+		{
+			SetOutline(CurrentFocusedRevolver, true);
+		}
+	}
 
 	if (bLogVRPointerHits && bHit)
 	{

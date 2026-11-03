@@ -72,7 +72,5 @@ private:
     TObjectPtr<UInputAction> IA_Interact;
     void OnInteract(const FInputActionValue& Value);
     void DetectRevolver();
-    void SetOutline(AActor* Actor, bool bEnable);
-    UPROPERTY()
-    TObjectPtr<AActor> CurrentFocusedActor = nullptr;
+
 };

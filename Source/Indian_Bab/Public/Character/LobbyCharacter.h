@@ -286,9 +286,12 @@ protected:
 
 	EGunHoldReason FinishedReason;
 
+	UPROPERTY()
+	TObjectPtr<AActor> CurrentFocusedRevolver = nullptr;
+
 	// 조준선 표시/숨김
 	void SetMainShotAimLineVisible(bool bVisible);
 
-	virtual void HoveringInteract();
+	void SetOutline(AActor* Actor, bool bEnable);
 
 };
