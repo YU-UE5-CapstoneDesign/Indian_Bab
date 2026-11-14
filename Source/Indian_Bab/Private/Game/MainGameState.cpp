@@ -193,7 +193,8 @@ void AMainGameState::SetNextRoundGameState()
 	CurrentBetInfo.CurrentBetAction = EBetAction::None;
 	CurrentBetInfo.BetActionTotal = 0;
 	CurrentBulletCount = 1;
-	SetGamePhase(EGamePhase::Playing);
+	
+	// Playing 단계 전환은 카드 지급과 첫 턴 선정이 성공한 뒤 GameMode에서 수행합니다.
 }
 
 void AMainGameState::OnRep_CurrentTurnPlayerId()

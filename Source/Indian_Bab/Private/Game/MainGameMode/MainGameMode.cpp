@@ -719,53 +719,98 @@ void AMainGameMode::CheckGameStart()
 // MainGame 시작(반복됨)
 void AMainGameMode::StartMainGame()
 {
-	if (bGameEnded) return;
-	if (AMainGameState* StartingGS = GetGameState<AMainGameState>())
-	{
-		if (StartingGS->CurrentGamePhase == EGamePhase::Starting)
-		{
-			CheckGameStart();
-			if (!bGameStartRequested) return;
-			for (FConstPlayerControllerIterator It = GetWorld()->GetPlayerControllerIterator(); It; ++It)
-			{
-				AMainGamePlayerController* PC = Cast<AMainGamePlayerController>(It->Get());
-				if (PC && !Cast<ALobbyVRCharacter>(PC->GetPawn())) PC->Client_FinishPCReady();
-			}
-		}
-	}
+    if (!HasAuthority() || bGameEnded) return;
+    AMainGameState* GS = GetGameState<AMainGameState>();
+    if (!GS) return;
+    const bool bInitialRound = GS->CurrentGamePhase == EGamePhase::Starting;
+    if (bInitialRound)
+    {
+        CheckGameStart();
+        if (!bGameStartRequested) return;
+    }
+    GetWorldTimerManager().ClearTimer(TimerHandle);
+    GS->ClearTimerInfo();
+    GS->bTurnActionInProgress = true;
 
-	// TODO: 카드 분배, 앤티(Ante) 지불 등 실제 인게임 로직 호출, 생존자 카운팅
-	AMainGameState* GS = GetGameState<AMainGameState>();
-	if (!GS) return;
-	
-	GS->SetMainRevolverChamberCount(MainRevolverChamberCount);
-	GS->SetGamePhase(EGamePhase::Playing);
+    TArray<FMainRoundParticipant> Participants;
+    if (!BuildRoundParticipants(Participants))
+    {
+        HandleRoundPreparationFailure(bInitialRound, TEXT("Invalid or missing round participant"));
+        return;
+    }
+    GS->AlivePlayerCount = Participants.Num();
+    if (!bInitialRound && Participants.Num() == 1)
+    {
+        EndGame(Participants[0].PlayerState);
+        return;
+    }
+    if (Participants.Num() < 2)
+    {
+        HandleRoundPreparationFailure(bInitialRound, TEXT("Not enough round participants"));
+        return;
+    }
 
-	for (FConstPlayerControllerIterator It = GetWorld()->GetPlayerControllerIterator(); It; ++It)
-	{
-		APlayerController* PC = It->Get();
-		if (!PC)
-		{
-			continue;
-		}
+    MainCardManager = GetCardManager();
+    const int32 StarterIndex = SelectRoundStarter(Participants);
+    if (!Participants.IsValidIndex(StarterIndex) || !TryDistributeCards(Participants))
+    {
+        HandleRoundPreparationFailure(bInitialRound, TEXT("Card distribution or starter selection failed"));
+        return;
+    }
 
-		if (ALobbyVRCharacter* VRCharacter = Cast<ALobbyVRCharacter>(PC->GetPawn()))
-		{
-			VRCharacter->Client_ShowMainGameWidget();
-		}
-	}
+    const FMainRoundParticipant& Starter = Participants[StarterIndex];
+    CheckPlayer = Starter.PlayerState->GetPlayerId();
+    GS->SetMainRevolverChamberCount(MainRevolverChamberCount);
+    GS->ChangeGameTurn(CheckPlayer, Starter.SeatIndex);
+    GS->SetGamePhase(EGamePhase::Playing);
+    GS->bTurnActionInProgress = false;
+    GS->ForceNetUpdate();
 
-	//GS의 게임 페이즈 기반 플레이어 선택
-	PickPlayer(GS -> CurrentPlayerIndex);
-	
-	// 라운드 내 isFold 초기화
-	ResetFoldState();
-	
-	DistributeCard();
-	
-	StartTurnTimer(TurnTimeLimitSeconds);
+    for (FConstPlayerControllerIterator It = GetWorld()->GetPlayerControllerIterator(); It; ++It)
+    {
+        AMainGamePlayerController* PC = Cast<AMainGamePlayerController>(It->Get());
+        if (!PC) continue;
+        if (ALobbyVRCharacter* VRCharacter = Cast<ALobbyVRCharacter>(PC->GetPawn()))
+            VRCharacter->Client_ShowMainGameWidget();
+        else if (bInitialRound)
+            PC->Client_FinishPCReady();
+    }
+    StartTurnTimer(TurnTimeLimitSeconds);
+}
 
-	return;
+// 라운드 실패 후 처리
+void AMainGameMode::HandleRoundPreparationFailure(bool bInitialRound, const FString& Reason)
+{
+    UE_LOG(LogTemp, Error, TEXT("[GM] Round preparation failed: %s"), *Reason);
+    GetWorldTimerManager().ClearTimer(TimerHandle);
+    GetWorldTimerManager().ClearTimer(CardRevealTimerHandle);
+    AMainGameState* GS = GetGameState<AMainGameState>();
+    if (!GS) return;
+    GS->ClearTimerInfo();
+    GS->ChangeGameTurn(INDEX_NONE, INDEX_NONE);
+    DealtCards.Reset();
+    if (bInitialRound)
+    {
+        bGameStartRequested = false;
+        GS->bTurnActionInProgress = false;
+        GS->SetGamePhase(EGamePhase::Lobby);
+        CheckGameStart();
+        return;
+    }
+
+    // 구성 오류로 끝난 매치는 정상 승자를 표시하지 않고 기존 킥/오류 안내 경로로 정리합니다.
+    bGameEnded = true;
+    GS->bTurnActionInProgress = true;
+    TArray<APlayerController*> Controllers;
+    for (FConstPlayerControllerIterator It = GetWorld()->GetPlayerControllerIterator(); It; ++It)
+        if (APlayerController* PC = It->Get()) Controllers.Add(PC);
+    const FText FailureReason = NSLOCTEXT("MainGame", "RoundPreparationFailed", "카드 분배를 준비하지 못해 게임을 종료합니다. 방에 다시 입장해 주세요.");
+    for (APlayerController* PC : Controllers)
+    {
+        if (!IsValid(PC)) continue;
+        if (!GameSession || !GameSession->KickPlayer(PC, FailureReason))
+            PC->ClientReturnToMainMenuWithTextReason(FailureReason);
+    }
 }
 
 // 턴 넘기는 타이머
@@ -949,8 +994,8 @@ void AMainGameMode::NextRound()
 
 	// 다음 라운드 대비 GateState 초기화
 	GS -> SetNextRoundGameState();
-	// 카드 공개 중 잠근 베팅 입력을 새 라운드에서 다시 허용합니다.
-	GS->bTurnActionInProgress = false;
+	// 카드 지급과 첫 턴 선정이 끝날 때까지 베팅 입력을 잠급니다.
+	GS->bTurnActionInProgress = true;
 
 
     // 이전 라운드의 기준 플레이어 폴드 상태 초기화

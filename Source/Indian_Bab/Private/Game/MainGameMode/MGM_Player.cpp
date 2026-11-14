@@ -3,92 +3,71 @@
 #include "Actor/SeatActor.h"
 #include "PlayerState/MainPlayerState.h"
 #include "GameFramework/Character.h"
+#include "GameFramework/PlayerController.h"
+#include "CardController/CardManager.h"
 
 #if WITH_SERVER_CODE
 
-// 플레이어 선택
-void AMainGameMode::PickPlayer(int32 CurrentPlayerIndex)
+// 살아 있는 플레이어 목록 생성
+bool AMainGameMode::BuildRoundParticipants(TArray<FMainRoundParticipant>& OutParticipants) const
 {
-	if (!HasAuthority()) return;
+    OutParticipants.Reset();
 
-	AMainGameState* GS = GetGameState<AMainGameState>();
-	if(!GS) return;
-	if(GS -> CurrentGamePhase != EGamePhase::Playing) return;
-	
-	// 이제 막 게임 시작한 케이스
-	if(CurrentPlayerIndex == -1 )
-	{
-		PickRandomPlayer();
-	}
-	// Result인 경우 결과 확인 페이즈인 케이스
-	if(CurrentPlayerIndex != -1)
-	{
-		// 결과 판별 아직 안 만들어서 임시 구현
-		PickByResult();
-	}
-	return;
-}
+    const AMainGameState* GS = GetGameState<AMainGameState>();
+    if (!GS) return false;
 
-// 플레이어 랜덤 선택
-void AMainGameMode::PickRandomPlayer()
-{
-	if (!HasAuthority()) return;
-
-	AMainGameState* GS = GetGameState<AMainGameState>();
-	if (!GS) return;
-
-	TArray<int32> EligibleSeatIndices;
-	for (int32 Index = 0; Index < GS->SeatChairArray.Num(); ++Index)
-	{
-		ASeatActor* Seat = GS->SeatChairArray[Index];
-		ACharacter* Character = IsValid(Seat) ? Cast<ACharacter>(Seat->GetOccupant()) : nullptr;
-		AMainPlayerState* PS = IsValid(Character) ? Character->GetPlayerState<AMainPlayerState>() : nullptr;
-		if (IsValid(PS) && PS->isAlive)
-		{
-			EligibleSeatIndices.Add(Index);
-		}
-	}
-	if (EligibleSeatIndices.IsEmpty()) return;
-
-	const int32 SeatIndex = EligibleSeatIndices[FMath::RandRange(0, EligibleSeatIndices.Num() - 1)];
-	ACharacter* Character = Cast<ACharacter>(GS->SeatChairArray[SeatIndex]->GetOccupant());
-	AMainPlayerState* PS = Character->GetPlayerState<AMainPlayerState>();
-	CheckPlayer = PS->GetPlayerId();
-	GS->ChangeGameTurn(CheckPlayer, SeatIndex);
-}
-
-void AMainGameMode::PickByResult()
-{
-    if (!HasAuthority()) return;
-
-    AMainGameState* GS = GetGameState<AMainGameState>();
-    if (!GS) return;
-
-    AMainPlayerState* WinPS = MaxCardPlayer();
-    if (!WinPS) return;
-    
-    for (int32 i = 0; i < GS->SeatChairArray.Num(); i++)
+    TSet<AMainPlayerState*> Seen;
+    for (int32 Index = 0; Index < GS->SeatChairArray.Num(); Index++)
     {
-        ASeatActor* Seat = GS->SeatChairArray[i];
-        if(!Seat || !Seat->GetOccupant()) continue;
+        ASeatActor* Seat = GS->SeatChairArray[Index];
+        ACharacter* Character = IsValid(Seat) ? Cast<ACharacter>(Seat->GetOccupant()) : nullptr;
+        AMainPlayerState* PS = IsValid(Character) ? Character->GetPlayerState<AMainPlayerState>() : nullptr;
+        if (!IsValid(PS) || !PS->isAlive) continue;
 
-        ACharacter* OccupantCharacter = Cast<ACharacter>(Seat->GetOccupant());
-        if(!OccupantCharacter) continue;
+        APlayerController* PC = Cast<APlayerController>(PS->GetOwner());
+        if (!IsValid(PC) || PC->GetPawn() != Character || !GS->PlayerArray.Contains(PS)) return false;
 
-        AMainPlayerState* PS = OccupantCharacter->GetPlayerState<AMainPlayerState>();
-        if(!PS) continue;
-        if(!PS -> isAlive) continue;
-        if(PS -> isFold) continue;
-
-        if (PS == WinPS)
-        {
-            CheckPlayer = PS->GetPlayerId();
-            GS->ChangeGameTurn(PS->GetPlayerId(), i);
-
-            UE_LOG(LogTemp, Warning, TEXT("[GM] PickByResult -> Player %d selected as next starter"), PS->GetPlayerId());
-            return;
-        }
+        if (Seen.Contains(PS)) return false;
+        Seen.Add(PS);
+        FMainRoundParticipant& Participant = OutParticipants.AddDefaulted_GetRef();
+        Participant.PlayerState = PS;
+        Participant.SeatIndex = Index;
     }
+
+    // 누락된 생존자를 사망자로 간주하여 승자를 잘못 판정하지 않습니다.
+    for (APlayerState* PlayerState : GS->PlayerArray)
+    {
+        AMainPlayerState* PS = Cast<AMainPlayerState>(PlayerState);
+        if (IsValid(PS) && PS->isAlive && !Seen.Contains(PS)) return false;
+    }
+    return true;
+}
+
+// 라운드 시작 플레이어 선택
+int32 AMainGameMode::SelectRoundStarter(const TArray<FMainRoundParticipant>& Participants) const
+{
+    const AMainGameState* GS = GetGameState<AMainGameState>();
+    if (!GS || Participants.IsEmpty() || !IsValid(MainCardManager)) return INDEX_NONE;
+    if (GS->CurrentPlayerIndex == INDEX_NONE) return FMath::RandRange(0, Participants.Num() - 1);
+
+    // 폴드 초기화와 새 카드 지급 전에 이전 라운드의 결과를 보존합니다.
+    int32 BestIndex = INDEX_NONE;
+    for (int32 Index = 0; Index < Participants.Num(); ++Index)
+    {
+        AMainPlayerState* PS = Participants[Index].PlayerState;
+        if (PS->isFold || PS->GetMyCard().Value <= 0) continue;
+        AMainPlayerState* BestPS = BestIndex != INDEX_NONE ? Participants[BestIndex].PlayerState : nullptr;
+        if (!BestPS || MainCardManager->IsCardHigher(PS->GetMyCard(), PS->GetCardComparisonValue(),
+            BestPS->GetMyCard(), BestPS->GetCardComparisonValue())) BestIndex = Index;
+    }
+    if (BestIndex != INDEX_NONE) return BestIndex;
+    // 공개 단계에서 카드가 지워졌다면 확정된 승자의 턴 ID를 사용합니다.
+    for (int32 Index = 0; Index < Participants.Num(); ++Index)
+    {
+        if (Participants[Index].PlayerState->GetPlayerId() == GS->CurrentTurnPlayerId
+            && !Participants[Index].PlayerState->isFold) return Index;
+    }
+    return FMath::RandRange(0, Participants.Num() - 1);
 }
 
 int32 AMainGameMode::CountAliveSeatedPlayers() const

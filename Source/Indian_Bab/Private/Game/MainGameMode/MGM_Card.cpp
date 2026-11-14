@@ -19,7 +19,7 @@
 // 카드 매니저 획득
 TObjectPtr<ACardManager> AMainGameMode::GetCardManager()
 {
-    if (!MainCardManager)
+    if (!IsValid(MainCardManager))
     {
         MainCardManager = Cast<ACardManager>(
             UGameplayStatics::GetActorOfClass(GetWorld(), ACardManager::StaticClass())
@@ -29,47 +29,31 @@ TObjectPtr<ACardManager> AMainGameMode::GetCardManager()
 }
 
 // 카드 분배
-void AMainGameMode::DistributeCard()
+bool AMainGameMode::TryDistributeCards(const TArray<FMainRoundParticipant>& Participants)
 {
-	AMainGameState* GS = GetGameState<AMainGameState>();
-	if (!GS) return;
+    MainCardManager = GetCardManager();
+    if (!IsValid(MainCardManager) || !IsValid(MainCardManager->CardDataTable) || Participants.IsEmpty()) return false;
+    for (const FMainRoundParticipant& Participant : Participants)
+    {
+        if (!IsValid(Participant.PlayerState) || !Participant.PlayerState->isAlive) return false;
+    }
+    const int32 CardCount = Participants.Num();
+    if (MainCardManager->CurrentDeck.Num() < CardCount) MainCardManager->InitializeDeck();
+    if (MainCardManager->CurrentDeck.Num() < CardCount) return false;
+    TArray<FCardData> PreparedCards = MainCardManager->DealCards(CardCount);
+    if (PreparedCards.Num() != CardCount) return false;
 
-	if (MainCardManager->CurrentDeck.Num() < GS->AlivePlayerCount)
-	{
-		UE_LOG(LogTemp, Warning, TEXT("Not enough cards. Reset deck before distribution: Alive=%d, Remaining=%d"),
-			GS->AlivePlayerCount, MainCardManager->CurrentDeck.Num());
-		MainCardManager->InitializeDeck();
-	}
-
-	DealtCards = MainCardManager->DealCards(GS->AlivePlayerCount);
-	if (DealtCards.Num() != GS->AlivePlayerCount)
-	{
-		UE_LOG(LogTemp, Warning, TEXT("카드 배분 실패: Alive=%d, Dealt=%d"),
-			GS->AlivePlayerCount, DealtCards.Num());
-		return;
-	}
-
-	int32 CardIndex = 0;
-	for(ASeatActor* Seat : GS->SeatChairArray)
-	{
-		if(!Seat || !Seat->GetOccupant()) continue;
-
-		ACharacter* OccupantCharacter = Cast<ACharacter>(Seat->GetOccupant());
-		if (!OccupantCharacter) continue;
-
-		AMainPlayerState* PS = OccupantCharacter -> GetPlayerState<AMainPlayerState>();
-		if(!PS) continue;
-		if(!PS -> isAlive) continue;
-
-		PS -> SetMyCard(DealtCards[CardIndex++]);
-		UE_LOG(LogTemp, Warning, TEXT("PS[%d] : PS_Card(%s)"), PS->GetPlayerId(), *PS->GetMyCard().ToDisplayString());
-	}
-	return;
+    // 준비는 동기 처리입니다. 전체 카드가 확보된 뒤에만 플레이어 상태를 갱신합니다.
+    ResetFoldState();
+    DealtCards = MoveTemp(PreparedCards);
+    for (int32 Index = 0; Index < Participants.Num(); ++Index)
+    {
+        Participants[Index].PlayerState->SetMyCard(DealtCards[Index]);
+    }
+    return true;
 }
 
-// 게임 결과 확인
-// CurrentWinnerPS 업데이트
-// 카드를 비교해 승자를 정하고 메인 총 단계와 PC 잡기 연출을 시작합니다.
+// 카드 비교 및 공개
 void AMainGameMode::CheckPlayerCard()
 {
 	AMainGameState* GS = GetGameState<AMainGameState>();

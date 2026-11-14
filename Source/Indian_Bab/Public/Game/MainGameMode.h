@@ -15,10 +15,19 @@ class AMainPlayerState;
 class ACardManager;
 class ARevolver;
 
+// 서버의 동기 라운드 준비 중에만 사용하는 참가자 스냅샷입니다.
+struct FMainRoundParticipant
+{
+	AMainPlayerState* PlayerState = nullptr;
+	int32 SeatIndex = INDEX_NONE;
+};
+
 UCLASS()
 class INDIAN_BAB_API AMainGameMode : public AGameMode
 {
 	GENERATED_BODY()
+
+	friend class FMainRoundPreparationTest;
 
 public:
 	AMainGameMode();
@@ -84,17 +93,10 @@ protected:
 	// 카드 매니저 획득
 	TObjectPtr<ACardManager> GetCardManager();
 
-	// 플레이어 선택
-	void PickPlayer(int32 CurrentPlayerIndex);
-
-	// 플레이어 랜덤 선택
-	void PickRandomPlayer();
-
-	// 결과 기반 선택
-	void PickByResult();
-
-	// 카드 분배
-	void DistributeCard();
+	bool BuildRoundParticipants(TArray<FMainRoundParticipant>& OutParticipants) const;
+	int32 SelectRoundStarter(const TArray<FMainRoundParticipant>& Participants) const;
+	bool TryDistributeCards(const TArray<FMainRoundParticipant>& Participants);
+	void HandleRoundPreparationFailure(bool bInitialRound, const FString& Reason);
 
 	// 턴 넘기는 타이머
 	void StartTurnTimer(float Time);
