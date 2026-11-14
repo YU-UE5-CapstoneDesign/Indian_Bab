@@ -176,6 +176,7 @@ void URoomJoinWidget::OnRoomsFound(bool bWasSuccessful, const TArray<FRoomListEn
 
 void URoomJoinWidget::OnRoomItemClicked(UObject* Item)
 {
+	if (SessionSubsystem && SessionSubsystem->IsJoiningRoom()) return;
 	URoomListEntryData* Data = Cast<URoomListEntryData>(Item);
 	if (Data == nullptr || !Data->bJoinable)
 	{
@@ -228,6 +229,8 @@ void URoomJoinWidget::OnJoinSessionComplete(bool bWasSuccessful)
 
 void URoomJoinWidget::OnNoClicked()
 {
+	// ESC도 참가 처리 중 비활성화된 취소 버튼과 같은 규칙을 따릅니다.
+	if (Button_No && !Button_No->GetIsEnabled()) return;
 	if (UMainMenuWidget* MainMenu = Cast<UMainMenuWidget>(ParentMenu))
 	{
 		if (!IsInViewport())
