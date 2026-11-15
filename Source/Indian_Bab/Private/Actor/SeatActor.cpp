@@ -1,4 +1,4 @@
-#include "Actor/SeatActor.h"
+﻿#include "Actor/SeatActor.h"
 #include "Actor/Revolver.h"
 #include "Components/StaticMeshComponent.h"
 #include "Components/SceneComponent.h"
@@ -48,6 +48,7 @@ void ASeatActor::SetOccupant(AActor* NewOccupant)
 	}
 
 	Occupant = NewOccupant;
+
 	bIsOccupied = IsValid(NewOccupant);
 	OnRep_IsOccupied();
 }
@@ -125,9 +126,25 @@ void ASeatActor::Interact_Implementation(AActor* Interactor)
 
 void ASeatActor::OnRep_IsOccupied()
 {
-	// 클라이언트 측 처리: 누군가 앉았다면 의자의 충돌을 끄거나 하이라이트를 끄는 등의 연출
-	if (bIsOccupied)
+	if (!bIsOccupied)
 	{
-		// 예: 충돌 무시 처리
+		return;
 	}
+
+	ALobbyCharacter* Character =Cast<ALobbyCharacter>(GetOccupant());
+
+	UE_LOG(
+		LogTemp,
+		Warning,
+		TEXT("Occupant: %s, SeatOrder: %d"),
+		*GetNameSafe(Occupant),
+		SeatOrder
+	);
+
+	if (!IsValid(Character))
+	{
+
+		return;
+	}
+	Character->ApplySeatColor(SeatColors[SeatOrder]);
 }

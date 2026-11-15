@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 
 #include "CoreMinimal.h"
 #include "Engine/DataTable.h"
@@ -35,6 +35,9 @@ struct FCardData : public FTableRowBase
     // TSoftObjectPtr: 게임 시작 시 53장을 한꺼번에 메모리에 올리지 않고 필요할 때만 로딩
     UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Card Visual")
     TSoftObjectPtr<UStaticMesh> CardMesh;
+
+    UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Card Visual")
+    TSoftObjectPtr<UStaticMesh> AfterTokenCardMesh;
 
     // 기본 생성자: 초기값 설정
     FCardData(): Value(0), Suit(TEXT("")), JokerType(EJokerType::None), CardMesh(nullptr) {}

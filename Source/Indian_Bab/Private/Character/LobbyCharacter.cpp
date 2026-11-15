@@ -21,6 +21,7 @@
 #include "Components/WidgetComponent.h"
 #include "DrawDebugHelpers.h"
 #include "Kismet/KismetMathLibrary.h"
+#include "Materials/MaterialInstanceDynamic.h"
 
 // Sets default values
 ALobbyCharacter::ALobbyCharacter()
@@ -351,12 +352,14 @@ void ALobbyCharacter::UpdatePlayerNameColor()
 				if (GS->CurrentTurnPlayerId == PS->GetPlayerId())
 				{
 					TargetColor = Widget->ActiveTurnColor;
+					Widget->SetTurnImage(true);
 					UE_LOG(LogTemp, Warning, TEXT("[LobbyChar] Player %d is in turn - Name Color: Blue"), PS->GetPlayerId());
 				}
 				// 그 외는 기본색
 				else
 				{
 					TargetColor = Widget->DefaultColor;
+					Widget->SetTurnImage(false);
 					UE_LOG(LogTemp, Warning, TEXT("[LobbyChar] Player %d is idle - Name Color: Default"), PS->GetPlayerId());
 				}
 			}
@@ -670,6 +673,15 @@ void ALobbyCharacter::OnGrabGunMontageEnded(UAnimMontage* Montage, bool bInterru
 {
 	if (bInterrupted)
 	{
+		if (HasAuthority() && GunHoldReason == EGunHoldReason::Fold)
+		{
+			if (AMainGamePlayerController* PC =
+				Cast<AMainGamePlayerController>(GetController()))
+			{
+				PC->Client_EndFoldAudio(false);
+			}
+		}
+
 		if (HasAuthority() && GunHoldReason == EGunHoldReason::Win)
 		{
 			bMainRevolverGrabInProgress = false;
@@ -862,4 +874,34 @@ void ALobbyCharacter::UpdateDeskRevolverCount(int32 TriggerCount)
 	}
 
 	DeskRevolver->UpdateFoldCountWidget(TriggerCount);
+}
+
+
+void ALobbyCharacter::ApplySeatColor(const FLinearColor& Color)
+{
+	if (!IsValid(ThirdPersonMetaHumanTorso))
+	{
+		return;
+	}
+
+	const int32 NumMaterials = ThirdPersonMetaHumanTorso->GetNumMaterials();
+
+	for (int32 i = 0; i < NumMaterials; ++i)
+	{
+		UMaterialInstanceDynamic* MID =ThirdPersonMetaHumanTorso->CreateAndSetMaterialInstanceDynamic(i);
+
+		if (MID)
+		{
+			MID->SetVectorParameterValue(FName(TEXT("diffuse_color_1")),Color);
+		}
+	}
+}
+
+void ALobbyCharacter::SetOutline(AActor* Actor, bool bEnable)
+{
+	ARevolver* Revolver = Cast<ARevolver>(Actor);
+
+	Revolver->WeaponMesh->SetRenderCustomDepth(bEnable);
+	if (Revolver->ActorHasTag(FName("SubRevolver")))
+		Revolver->ShowFoldCount(bEnable);
 }

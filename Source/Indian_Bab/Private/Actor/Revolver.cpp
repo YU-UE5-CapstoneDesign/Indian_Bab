@@ -1,4 +1,4 @@
-#include "Actor/Revolver.h"
+﻿#include "Actor/Revolver.h"
 #include "Components/SkeletalMeshComponent.h"
 #include "Components/SphereComponent.h"
 #include "Components/WidgetComponent.h"
@@ -218,7 +218,7 @@ void ARevolver::PlayDryFireSound() const
 void ARevolver::SetWidgetPlayingPhase(bool bIsPlaying)
 {
 	// MainRevolver 태그가 있는 리볼버에서만 동작
-	if (!ActorHasTag(FName("MainRevolver")) && !ActorHasTag(FName("SubRevolver"))) return;
+	if (!ActorHasTag(FName("MainRevolver"))) return;
 
 	URevolverCountWidget* CountWidget = Cast<URevolverCountWidget>(BulletCountWidgetComponent->GetUserWidgetObject());
 	if (CountWidget)
@@ -247,4 +247,8 @@ void ARevolver::ReturnToInitialTableTransform()
 	}
 
 	ForceNetUpdate();
+}
+
+void ARevolver::ShowFoldCount(bool bIsDetected) {
+	BulletCountWidgetComponent->SetVisibility(bIsDetected);
 }

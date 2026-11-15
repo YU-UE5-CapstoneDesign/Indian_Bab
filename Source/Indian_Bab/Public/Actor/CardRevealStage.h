@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 
 #include "CoreMinimal.h"
 #include "GameFramework/Actor.h"
@@ -32,6 +32,7 @@ private:
 	{
 		USceneComponent* Pivot = nullptr;
 		UStaticMeshComponent* Front = nullptr;
+		UStaticMeshComponent* AfterTokenFront = nullptr;
 		UStaticMeshComponent* Back = nullptr;
 		UStaticMeshComponent* Token = nullptr;
 		UTextRenderComponent* NameText = nullptr;
@@ -131,6 +132,12 @@ private:
 
 	UPROPERTY(EditDefaultsOnly, Category = "Card Reveal|Audio", meta = (ClampMin = "0.0", ClampMax = "1.0"))
 	float CoinDropVolume = 0.35f;
+
+	UPROPERTY(EditDefaultsOnly, Category = "Card Reveal|AfterToken", meta = (ClampMin = "1.25"))
+	float PopScale = 1.25f;
+
+	UPROPERTY(EditDefaultsOnly, Category = "Card Reveal|AfterToken", meta = (ClampMin = "0.0", ClampMax = "1.0"))
+	float PopDuration = 0.5f;
 
 	TArray<FCardVisual> Visuals;
 	float ElapsedTime = 0.0f;

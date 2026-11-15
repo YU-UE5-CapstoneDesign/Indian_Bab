@@ -1,4 +1,4 @@
-#include "Actor/CardRevealStage.h"
+﻿#include "Actor/CardRevealStage.h"
 #include "Actor/SeatActor.h"
 
 #include "Containers/StringConv.h"
@@ -125,6 +125,13 @@ void ACardRevealStage::StartRevealAtView(FVector ViewLocation, FRotator ViewRota
 		Visual.Front->SetRelativeScale3D(FVector(ReferenceCardScale));
 		Visual.Front->SetVisibility(false);
 
+		Visual.AfterTokenFront = CreateMesh();
+		Visual.AfterTokenFront->SetStaticMesh(Entry.Card.AfterTokenCardMesh.LoadSynchronous());
+		Visual.AfterTokenFront->SetRelativeLocation(FVector(0.0f, 0.0f, 1.0f));
+		Visual.AfterTokenFront->SetRelativeRotation(FRotator(180.0f, 0.0f, 0.0f));
+		Visual.AfterTokenFront->SetRelativeScale3D(FVector(ReferenceCardScale));
+		Visual.AfterTokenFront->SetVisibility(false);
+
 		Visual.Back = CreateMesh();
 		Visual.Back->SetStaticMesh(PlaneMesh);
 		Visual.Back->SetMaterial(0, BackMaterial);
@@ -220,6 +227,17 @@ void ACardRevealStage::Tick(float DeltaSeconds)
 			{
 				UGameplayStatics::PlaySoundAtLocation(this, CoinDropSound, Visual.Token->GetComponentLocation(), CoinDropVolume);
 			}
+		}
+		if (Visual.bDropSoundPlayed) 
+		{
+			Visual.Front->SetVisibility(false);
+			Visual.AfterTokenFront->SetVisibility(true);
+			constexpr float ReferenceCardScale = 0.038f;
+
+			const float SwapTime = TokenStart + FMath::Max(TokenDropDuration, 0.01f);
+			const float PopTime = FMath::Clamp((ElapsedTime - SwapTime) / PopDuration, 0.0f, 1.0f);
+			const float Bump = FMath::Sin(PopTime * PI);
+			Visual.AfterTokenFront->SetRelativeScale3D(FVector(ReferenceCardScale * FMath::Lerp(1.0f, PopScale, Bump)));
 		}
 
 	}
