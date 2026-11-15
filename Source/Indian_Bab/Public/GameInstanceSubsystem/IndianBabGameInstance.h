@@ -140,6 +140,10 @@ private:
     // PostLoadMapWithWorld 마다 재적용 → 메인메뉴 / 인게임 ServerTravel 후에도 일관 유지.
     // HMD 미장착 / 데디는 자연 no-op.
     void ApplyVRSpectatorScreenMode();
+
+    // 플레이 모드별 렌더 설정 적용 — VR(스테레오)에서는 GI·반사를 끄고, PC에서는 프로젝트 기본값(DefaultEngine.ini)을 쓴다.
+    // 모드 확정 시와 PostLoadMapWithWorld 마다 재적용. 데디는 no-op.
+    void ApplyPlayModeRenderSettings();
     void OnPostLoadMap(UWorld* LoadedWorld);
 
     FDelegateHandle NetworkFailureHandle;
