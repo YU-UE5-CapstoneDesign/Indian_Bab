@@ -57,40 +57,6 @@ namespace
         default:                                          return TEXT("Unknown");
         }
     }
-
-    // VR(스테레오) 모드에서만 끄는 렌더 기능.
-    // Screen Space(2)는 스테레오 오른쪽 눈이 깨지고, Lumen(1)은 HMD 해상도·주사율에서 비용이 커서 0으로 둔다.
-    // PC 모드 값은 프로젝트 기본(DefaultEngine.ini)이며, 처음 적용할 때 한 번 읽어 둔다.
-    struct FStereoDisabledRenderCVar
-    {
-        const TCHAR* Name;
-        bool bProjectDefaultCaptured;
-        int32 ProjectDefault;
-    };
-
-    FStereoDisabledRenderCVar GStereoDisabledRenderCVars[] =
-    {
-        { TEXT("r.DynamicGlobalIlluminationMethod"), false, 0 },
-        { TEXT("r.ReflectionMethod"), false, 0 },
-    };
-
-    void ApplyStereoRenderCVars(bool bStereo)
-    {
-        for (FStereoDisabledRenderCVar& Entry : GStereoDisabledRenderCVars)
-        {
-            IConsoleVariable* CVar = IConsoleManager::Get().FindConsoleVariable(Entry.Name);
-            if (!CVar)
-            {
-                continue;
-            }
-            if (!Entry.bProjectDefaultCaptured)
-            {
-                Entry.ProjectDefault = CVar->GetInt();
-                Entry.bProjectDefaultCaptured = true;
-            }
-            CVar->Set(bStereo ? 0 : Entry.ProjectDefault, ECVF_SetByGameOverride);
-        }
-    }
 }
 
 // 기존 캐릭터 BP를 두 모드의 기본 클래스로 재사용합니다.
@@ -106,7 +72,6 @@ void UIndianBabGameInstance::SetSelectedPlayMode(bool bUseVR)
 {
     bPlayModeSelected = true;
     bUseVRPlayMode = bUseVR;
-    ApplyPlayModeRenderSettings();
 }
 
 // 서버에서도 동일한 BP 목록으로 플레이어별 Pawn을 선택합니다.
@@ -451,33 +416,12 @@ void UIndianBabGameInstance::Shutdown()
 
     FCoreUObjectDelegates::PostLoadMapWithWorld.Remove(PostLoadMapHandle);
 
-    // PIE 종료 뒤 에디터 뷰포트에 VR 값이 남지 않도록 프로젝트 기본값으로 되돌린다.
-    if (!IsRunningDedicatedServer())
-    {
-        ApplyStereoRenderCVars(false);
-    }
-
     Super::Shutdown();
 }
 
 void UIndianBabGameInstance::OnPostLoadMap(UWorld* /*LoadedWorld*/)
 {
     ApplyVRSpectatorScreenMode();
-    ApplyPlayModeRenderSettings();
-}
-
-void UIndianBabGameInstance::ApplyPlayModeRenderSettings()
-{
-    if (IsRunningDedicatedServer())
-    {
-        return;
-    }
-
-    // 메뉴 선택을 거치지 않는 경로(PIE VR Preview)도 잡도록 실제 스테레오 상태를 함께 본다.
-    const bool bStereo = bUseVRPlayMode || (GEngine && GEngine->IsStereoscopic3D());
-    ApplyStereoRenderCVars(bStereo);
-    UE_LOG(LogIndianBabGI, Log,
-        TEXT("[GI] 렌더 설정 적용: mode=%s"), bStereo ? TEXT("VR") : TEXT("PC"));
 }
 
 void UIndianBabGameInstance::ApplyVRSpectatorScreenMode()
