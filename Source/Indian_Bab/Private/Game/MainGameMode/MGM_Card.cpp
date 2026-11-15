@@ -176,7 +176,7 @@ void AMainGameMode::FinishCardReveal()
 	GS->SetMainShotInfo(CurrentWinnerPS->GetPlayerId(), GS->CurrentBulletCount);
 
 	WinnerCharacter->SetActiveRevolver(Revolver);
-	WinnerCharacter->BeginManualMainRevolverPhase(!Cast<ALobbyPCCharacter>(WinnerCharacter));
+	WinnerCharacter->BeginManualMainRevolverPhase(false);
 
 	// vr/pc 집는 모드 분할
 	if(GS->CurrentBulletCount > 0)

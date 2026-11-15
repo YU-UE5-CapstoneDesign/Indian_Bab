@@ -336,6 +336,15 @@ void AMainGameMode::HandleMainMontageFinished(ALobbyCharacter* Character)
 		HandleMainRevolverGrabbed(Character);
 		return;
 	}
+	if (ALobbyVRCharacter* VRCharacter = Cast<ALobbyVRCharacter>(Character))
+	{
+		if (Character->GunHoldReason != EGunHoldReason::Win || !Character->ActiveRevolver
+			|| Character->IsMainRevolverGrabbed()) return;
+		VRCharacter->Multicast_CompleteVRMainRevolverGrab();
+		Character->MarkMainRevolverGrabbed();
+		HandleMainRevolverGrabbed(Character);
+		return;
+	}
 	ManageShotPhase();
 }
 

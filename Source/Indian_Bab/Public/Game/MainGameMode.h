@@ -28,6 +28,7 @@ class INDIAN_BAB_API AMainGameMode : public AGameMode
 	GENERATED_BODY()
 
 	friend class FMainRoundPreparationTest;
+	friend class FVRMainRevolverGrabTest;
 
 public:
 	AMainGameMode();

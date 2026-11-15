@@ -50,6 +50,8 @@ public:
 	virtual void ReturnRevolverToDesk() override;
 	virtual void ReturnMainRevolverToTableImmediately() override;
 	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
+	UFUNCTION(NetMulticast, Reliable)
+	void Multicast_CompleteVRMainRevolverGrab();
 
 	UFUNCTION(Client, Reliable)
 	void Client_InitSeatedAtSeat(FVector TargetLocation, FRotator TargetRotation);
@@ -214,6 +216,8 @@ private:
 
 	UFUNCTION(NetMulticast, Reliable)
 	void Multicast_PlayVRMainRevolverGrabAnimation(ARevolver* Revolver);
+	UFUNCTION(NetMulticast, Reliable)
+	void Multicast_ClearVRMainRevolver();
 	virtual void PlayPutBackGunMontage(EGunHoldReason Reason) override;
 	void OnVRMainRevolverAnimationEnded(UAnimMontage* Montage, bool bInterrupted);
 	void RestoreVRMainGrabPresentation();
@@ -246,6 +250,17 @@ private:
 		bool bOnlyOwnerSee = false;
 	};
 	TArray<FVRGrabMeshState> VRGrabMeshStates;
+	struct FVRMainAnimationCameraState
+	{
+		TWeakObjectPtr<USceneComponent> Parent;
+		FName Socket;
+		FTransform RelativeTransform = FTransform::Identity;
+		bool bLockToHmd = false;
+		bool bUsePawnControlRotation = false;
+		bool bActive = false;
+		TArray<TPair<TWeakObjectPtr<UCameraComponent>, bool>> CameraActivationStates;
+	};
+	FVRMainAnimationCameraState VRMainAnimationCameraState;
 
 	void AttachMainRevolverToRightGrip();
 	
