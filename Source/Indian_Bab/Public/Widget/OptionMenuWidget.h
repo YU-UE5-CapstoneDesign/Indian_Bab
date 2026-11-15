@@ -26,7 +26,8 @@ struct FDisplaySettings
 	UPROPERTY() float MasterVolume = 1.f;
 	UPROPERTY() float MouseSensitivity = 1.f;
 	UPROPERTY() float ScreenBrightness = 1.f;
-	UPROPERTY() int32 ResolutionIndex = 0;
+	UPROPERTY() FString Resolution;
+	UPROPERTY() int32 RefreshRate = 0;
 	UPROPERTY() int32 WindowModeIndex = 0;
 
 	// 두 설정이 동일한지 비교하기 위한 연산자
@@ -35,7 +36,8 @@ struct FDisplaySettings
 		return FMath::IsNearlyEqual(MasterVolume, Other.MasterVolume) &&
 			FMath::IsNearlyEqual(MouseSensitivity, Other.MouseSensitivity) &&
 			FMath::IsNearlyEqual(ScreenBrightness, Other.ScreenBrightness) &&
-			ResolutionIndex == Other.ResolutionIndex &&
+			Resolution == Other.Resolution &&
+			RefreshRate == Other.RefreshRate &&
 			WindowModeIndex == Other.WindowModeIndex;
 	}
 };
@@ -101,6 +103,7 @@ private:
 	UPROPERTY(meta = (BindWidget)) TObjectPtr<USlider> Slider_MouseSensitivity;
 	UPROPERTY(meta = (BindWidget)) TObjectPtr<USlider> Slider_ScreenBrightness;
 	UPROPERTY(meta = (BindWidget)) TObjectPtr<UComboBoxString> ComboBoxString_ScreenResolution;
+	UPROPERTY(meta = (BindWidgetOptional)) TObjectPtr<UComboBoxString> ComboBoxString_RefreshRate;
 	UPROPERTY(meta = (BindWidget)) TObjectPtr<UComboBoxString> ComboBoxString_WindowMode;
 
 	UPROPERTY(meta = (BindWidget)) TObjectPtr<UButton> Button_Apply;
@@ -113,6 +116,7 @@ private:
 	UPROPERTY(meta = (BindWidget)) TObjectPtr<UButton> Button_ResetMouseSensitivity;
 	UPROPERTY(meta = (BindWidget)) TObjectPtr<UButton> Button_ResetScreenBrightness;
 	UPROPERTY(meta = (BindWidget)) TObjectPtr<UButton> Button_ResetScreenResolution;
+	UPROPERTY(meta = (BindWidgetOptional)) TObjectPtr<UButton> Button_ResetRefreshRate;
 	UPROPERTY(meta = (BindWidget)) TObjectPtr<UButton> Button_ResetWindowMode;
 
 	//--- C++ 이벤트 핸들러 ---
@@ -121,6 +125,7 @@ private:
 	UFUNCTION() void OnMouseSensitivityChanged(float Value);
 	UFUNCTION() void OnScreenBrightnessChanged(float Value);
 	UFUNCTION() void OnScreenResolutionChanged(FString SelectedItem, ESelectInfo::Type SelectionType);
+	UFUNCTION() void OnRefreshRateChanged(FString SelectedItem, ESelectInfo::Type SelectionType);
 	UFUNCTION() void OnWindowModeChanged(FString SelectedItem, ESelectInfo::Type SelectionType);
 
 	// 메인 버튼 클릭
@@ -135,6 +140,7 @@ private:
 	UFUNCTION() void OnResetMouseSensitivityClicked();
 	UFUNCTION() void OnResetScreenBrightnessClicked();
 	UFUNCTION() void OnResetScreenResolutionClicked();
+	UFUNCTION() void OnResetRefreshRateClicked();
 	UFUNCTION() void OnResetWindowModeClicked();
 
 	//--- C++ 핵심 로직 함수 ---
@@ -144,6 +150,7 @@ private:
 
 	// StagedSettings 값을 실제 UI(슬라이더, 콤보박스)에 적용
 	void PopulateUIFromStagedSettings();
+	void UpdateRefreshRateOptions();
 
 	/** * Staged/Saved/Default 값을 비교하여 모든 버튼('적용', '초기화' 등)의
 	 * 활성화(Enabled) 및 가시성(Visibility) 상태를 업데이트
@@ -169,6 +176,7 @@ private:
 
 	// 콤보박스 채우기용 데이터
 	TArray<FString> AvailableResolutionStrings;
+	bool bUpdatingDisplayOptions = false;
 	TArray<FString> AvailableWindowModeStrings = { TEXT("전체 화면"), TEXT("테두리 없는 창모드"), TEXT("창 모드") };
 
 	// '확인' 시 변경사항이 있을 때 띄울 확인 팝업 클래스

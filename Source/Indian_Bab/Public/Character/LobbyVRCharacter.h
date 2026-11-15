@@ -14,6 +14,9 @@ class USkeletalMeshComponent;
 class UWidgetComponent;
 class UWidgetInteractionComponent;
 class UTurnInfoWidget;
+class UPrimitiveComponent;
+class USkeletalMesh;
+class UAnimInstance;
 
 UENUM(BlueprintType)
 enum class EVRActiveUI : uint8
@@ -30,6 +33,8 @@ class INDIAN_BAB_API ALobbyVRCharacter : public ALobbyCharacter
 {
 	GENERATED_BODY()
 
+	friend class FVRMainRevolverGrabTest;
+
 public:
 	ALobbyVRCharacter();
 
@@ -41,6 +46,12 @@ public:
 
 	virtual void InitSeatedAtSeat(ASeatActor* TargetSeat) override;
 	virtual bool GetMainShotTrace(float TraceDistance, FVector& OutStart, FVector& OutEnd) const override;
+	virtual void AttachRevolverToSocket() override;
+	virtual void ReturnRevolverToDesk() override;
+	virtual void ReturnMainRevolverToTableImmediately() override;
+	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
+	UFUNCTION(NetMulticast, Reliable)
+	void Multicast_CompleteVRMainRevolverGrab();
 
 	UFUNCTION(Client, Reliable)
 	void Client_InitSeatedAtSeat(FVector TargetLocation, FRotator TargetRotation);
@@ -202,6 +213,54 @@ protected:
 private:
 	UFUNCTION(Server, Reliable)
 	void Server_GrabMainRevolver();
+
+	UFUNCTION(NetMulticast, Reliable)
+	void Multicast_PlayVRMainRevolverGrabAnimation(ARevolver* Revolver);
+	UFUNCTION(NetMulticast, Reliable)
+	void Multicast_ClearVRMainRevolver();
+	virtual void PlayPutBackGunMontage(EGunHoldReason Reason) override;
+	void OnVRMainRevolverAnimationEnded(UAnimMontage* Montage, bool bInterrupted);
+	void RestoreVRMainGrabPresentation();
+	bool PlayVRMainRevolverAnimation(ARevolver* Revolver, bool bPuttingBack);
+	bool bVRMainPutBackPresentation = false;
+	bool bVRMainGrabPresentationActive = false;
+	UPROPERTY(VisibleAnywhere, Category = "VR|Animation")
+	TObjectPtr<USkeletalMeshComponent> VRAnimationRevolverMesh;
+	UPROPERTY(EditDefaultsOnly, Category = "VR|Animation")
+	TObjectPtr<USkeletalMesh> MainRevolverAnimationBody;
+	UPROPERTY(EditDefaultsOnly, Category = "VR|Animation")
+	TObjectPtr<USkeletalMesh> MainRevolverAnimationTorso;
+	UPROPERTY(EditDefaultsOnly, Category = "VR|Animation")
+	TObjectPtr<USkeletalMesh> MainRevolverAnimationFace;
+	UPROPERTY(EditDefaultsOnly, Category = "VR|Animation")
+	TSubclassOf<UAnimInstance> MainRevolverAnimationClass;
+	struct FVRAnimationAssetState
+	{
+		TWeakObjectPtr<USkeletalMeshComponent> Component;
+		TObjectPtr<USkeletalMesh> Mesh = nullptr;
+		TSubclassOf<UAnimInstance> AnimClass;
+	};
+	TArray<FVRAnimationAssetState> VRAnimationAssetStates;
+	struct FVRGrabMeshState
+	{
+		TWeakObjectPtr<UPrimitiveComponent> Component;
+		bool bVisible = false;
+		bool bHiddenInGame = false;
+		bool bOwnerNoSee = false;
+		bool bOnlyOwnerSee = false;
+	};
+	TArray<FVRGrabMeshState> VRGrabMeshStates;
+	struct FVRMainAnimationCameraState
+	{
+		TWeakObjectPtr<USceneComponent> Parent;
+		FName Socket;
+		FTransform RelativeTransform = FTransform::Identity;
+		bool bLockToHmd = false;
+		bool bUsePawnControlRotation = false;
+		bool bActive = false;
+		TArray<TPair<TWeakObjectPtr<UCameraComponent>, bool>> CameraActivationStates;
+	};
+	FVRMainAnimationCameraState VRMainAnimationCameraState;
 
 	void AttachMainRevolverToRightGrip();
 	

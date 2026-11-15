@@ -483,6 +483,11 @@ void ALobbyCharacter::PlayGrabGunMontage(EGunHoldReason Reason)
 
 void ALobbyCharacter::Multicast_PutBackGunMontage_Implementation(EGunHoldReason Reason)
 {
+	PlayPutBackGunMontage(Reason);
+}
+
+void ALobbyCharacter::PlayPutBackGunMontage(EGunHoldReason Reason)
+{
     UAnimInstance* AnimInstance = GetMesh()->GetAnimInstance();
 	if (!AnimInstance)
 	{

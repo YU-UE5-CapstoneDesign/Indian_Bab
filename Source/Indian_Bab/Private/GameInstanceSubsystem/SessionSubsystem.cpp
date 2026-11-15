@@ -67,6 +67,18 @@ void USessionSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 
 void USessionSubsystem::Deinitialize()
 {
+    FinishFindRequest();
+    ResetJoinAttempt();
+    FTSTicker::GetCoreTicker().RemoveTicker(CleanupTimeoutHandle);
+    CleanupTimeoutHandle.Reset();
+    bCleanupInProgress = false;
+    if (SessionInterface.IsValid())
+    {
+        SessionInterface->ClearOnCreateSessionCompleteDelegate_Handle(CreateSessionCompleteDelegateHandle);
+        SessionInterface->ClearOnDestroySessionCompleteDelegate_Handle(DestroySessionCompleteDelegateHandle);
+        SessionInterface->ClearOnDestroySessionCompleteDelegate_Handle(ReturnToMainMenuDestroySessionCompleteDelegateHandle);
+    }
+    SessionInterface.Reset();
     Super::Deinitialize();
 }
 
@@ -76,6 +88,11 @@ void USessionSubsystem::Deinitialize()
 // ---------------------------------------------------------
 void USessionSubsystem::CreateRoom(int32 MaxPlayers, ERoomVisibility Visibility)
 {
+    if (bFindingRooms || IsJoiningRoom() || bCleanupInProgress || !PendingReturnToMainMenuMapPath.IsEmpty())
+    {
+        OnSessionErrorEvent.Broadcast(TEXT("이전 세션 작업을 정리 중입니다. 잠시 후 다시 시도해주세요."));
+        return;
+    }
     if (!SessionInterface.IsValid())
     {
         OnSessionErrorEvent.Broadcast(TEXT("Steam 세션 인터페이스를 사용할 수 없습니다."));
@@ -257,11 +274,30 @@ void USessionSubsystem::HandleMatchmakerResponse(const FString& JsonBody, bool b
 // 따라서 단일 DestroySession 호출이 양쪽 시나리오 커버. 분기 코드 불필요(중복).
 void USessionSubsystem::CleanupHostSession(const FString& Reason)
 {
+    if (JoinFlow == EJoinFlow::DestroyingPrevious || JoinFlow == EJoinFlow::Joining)
+    {
+        if (!bJoinTimedOut)
+        {
+            bJoinTimedOut = true;
+            ++JoinRequestId;
+            FTSTicker::GetCoreTicker().RemoveTicker(JoinTimeoutHandle);
+            JoinTimeoutHandle.Reset();
+            OnJoinSessionCompleteEvent.Broadcast(false);
+        }
+        if (!Reason.IsEmpty()) OnSessionErrorEvent.Broadcast(Reason);
+        return;
+    }
+    if (IsJoiningRoom())
+    {
+        ResetJoinAttempt();
+        OnJoinSessionCompleteEvent.Broadcast(false);
+    }
+    if (bCleanupInProgress) return;
     const bool bWasHost = bIsLocalHost;
     const bool bHasNamedSession = SessionInterface.IsValid() &&
         SessionInterface->GetNamedSession(NAME_GameSession) != nullptr;
 
-    UE_LOG(LogSessionSubsystem, Error,
+    UE_LOG(LogSessionSubsystem, Warning,
         TEXT("CleanupHostSession: role=%s hasNamedSession=%d reason=%s"),
         bWasHost ? TEXT("HOST (destroying lobby)")
                  : (bHasNamedSession ? TEXT("CLIENT (leaving host lobby)") : TEXT("none")),
@@ -270,23 +306,39 @@ void USessionSubsystem::CleanupHostSession(const FString& Reason)
     if (bHasNamedSession)
     {
         PendingCleanupReason = Reason;
+        bCleanupInProgress = true;
+        CleanupTimeoutHandle = FTSTicker::GetCoreTicker().AddTicker(
+            FTickerDelegate::CreateWeakLambda(this, [this](float)
+            {
+                CleanupTimeoutHandle.Reset();
+                const FString Error = PendingCleanupReason.IsEmpty()
+                    ? TEXT("세션 정리 응답이 지연되고 있습니다. 잠시 후 다시 시도해주세요.") : PendingCleanupReason;
+                PendingCleanupReason.Empty();
+                OnSessionErrorEvent.Broadcast(Error);
+                return false;
+            }), 25.0f);
 
         SessionInterface->ClearOnDestroySessionCompleteDelegate_Handle(DestroySessionCompleteDelegateHandle);
         DestroySessionCompleteDelegateHandle = SessionInterface->AddOnDestroySessionCompleteDelegate_Handle(
             FOnDestroySessionCompleteDelegate::CreateUObject(this, &USessionSubsystem::OnDestroySessionAfterCleanup));
         // 호스트: 로비 해체 / 클라: LeaveLobby (OSS 내부 분기)
-        SessionInterface->DestroySession(NAME_GameSession);
+        if (!SessionInterface->DestroySession(NAME_GameSession) && bCleanupInProgress)
+            OnDestroySessionAfterCleanup(NAME_GameSession, false);
         return;
     }
 
     // 정리할 세션이 없는 경우(CreateSession 자체 실패 직후 / 클라가 Join 전 거부 등) 즉시 broadcast
     bIsLocalHost = false;
-    OnSessionErrorEvent.Broadcast(Reason);
+    if (!Reason.IsEmpty()) OnSessionErrorEvent.Broadcast(Reason);
 }
 
 
-void USessionSubsystem::OnDestroySessionAfterCleanup(FName /*SessionName*/, bool bWasSuccessful)
+void USessionSubsystem::OnDestroySessionAfterCleanup(FName SessionName, bool bWasSuccessful)
 {
+    if (SessionName != NAME_GameSession || !bCleanupInProgress) return;
+    bCleanupInProgress = false;
+    FTSTicker::GetCoreTicker().RemoveTicker(CleanupTimeoutHandle);
+    CleanupTimeoutHandle.Reset();
     if (SessionInterface.IsValid())
     {
         SessionInterface->ClearOnDestroySessionCompleteDelegate_Handle(DestroySessionCompleteDelegateHandle);
@@ -307,7 +359,7 @@ void USessionSubsystem::OnDestroySessionAfterCleanup(FName /*SessionName*/, bool
     const FString Reason = PendingCleanupReason;
     PendingCleanupReason.Empty();
 
-    OnSessionErrorEvent.Broadcast(Reason);
+    if (!Reason.IsEmpty()) OnSessionErrorEvent.Broadcast(Reason);
 }
 
 void USessionSubsystem::ReturnToMainMenuAfterSessionCleanup(const FString& MainMenuMapPath)
@@ -465,6 +517,117 @@ void USessionSubsystem::UnlockSessionForLobby()
 // ---------------------------------------------------------
 // 2. 방 목록 검색
 // ---------------------------------------------------------
+
+void USessionSubsystem::FinishFindRequest()
+{
+    FTSTicker::GetCoreTicker().RemoveTicker(FindTimeoutHandle);
+    FindTimeoutHandle.Reset();
+    if (SessionInterface.IsValid())
+    {
+        SessionInterface->ClearOnFindSessionsCompleteDelegate_Handle(FindSessionsCompleteDelegateHandle);
+    }
+    FindSessionsCompleteDelegateHandle.Reset();
+    bFindingRooms = false;
+    bFindTimedOut = false;
+}
+
+void USessionSubsystem::OnFindTimeout()
+{
+    FindTimeoutHandle.Reset();
+    if (!bFindingRooms || bFindTimedOut) return;
+    bFindTimedOut = true;
+    OnRoomsFoundEvent.Broadcast(false, TArray<FRoomListEntry>());
+    // Steam은 CancelFindSessions 성공 후에도 원래 Find 완료 이벤트를 발생시킵니다.
+    // 그 이벤트가 새 검색을 완료시키지 않도록 원래 콜백까지 직렬화를 유지합니다.
+}
+
+void USessionSubsystem::ResetJoinAttempt()
+{
+    FTSTicker::GetCoreTicker().RemoveTicker(JoinTimeoutHandle);
+    JoinTimeoutHandle.Reset();
+    if (SessionInterface.IsValid())
+    {
+        SessionInterface->ClearOnDestroySessionCompleteDelegate_Handle(DestroyBeforeJoinDelegateHandle);
+        SessionInterface->ClearOnJoinSessionCompleteDelegate_Handle(JoinSessionCompleteDelegateHandle);
+    }
+    DestroyBeforeJoinDelegateHandle.Reset();
+    JoinSessionCompleteDelegateHandle.Reset();
+    PendingJoinResult.Reset();
+    PendingMatchId.Empty();
+    PendingDediURL.Empty();
+    JoinFlow = EJoinFlow::Idle;
+    bJoinTimedOut = false;
+    ++JoinRequestId; // 늦게 도착한 티켓/HTTP 응답을 무효화합니다.
+}
+
+bool USessionSubsystem::IsCurrentAddressRequest(uint64 RequestId) const
+{
+    return JoinFlow == EJoinFlow::ResolvingAddress && JoinRequestId == RequestId;
+}
+
+void USessionSubsystem::FailJoin(const FString& Reason, bool bCleanupSession)
+{
+    ResetJoinAttempt();
+    OnJoinSessionCompleteEvent.Broadcast(false);
+    if (bCleanupSession) CleanupHostSession(Reason);
+    else OnSessionErrorEvent.Broadcast(Reason);
+}
+
+void USessionSubsystem::ArmJoinTimeout()
+{
+    FTSTicker::GetCoreTicker().RemoveTicker(JoinTimeoutHandle);
+    JoinTimeoutHandle = FTSTicker::GetCoreTicker().AddTicker(
+        FTickerDelegate::CreateWeakLambda(this, [this](float) { OnJoinTimeout(); return false; }), 25.0f);
+}
+
+void USessionSubsystem::OnJoinTimeout()
+{
+    JoinTimeoutHandle.Reset();
+    if (JoinFlow == EJoinFlow::Idle || bJoinTimedOut) return;
+    const FString Reason = TEXT("방 참가 응답 시간이 초과되었습니다. 잠시 후 다시 시도해주세요.");
+    if (JoinFlow == EJoinFlow::ResolvingAddress) { FailJoin(Reason, true); return; }
+    // OSS에는 Join 취소 API가 없습니다. UI는 복구하되 원래 작업의 완료 전 중복 실행을 막습니다.
+    bJoinTimedOut = true;
+    ++JoinRequestId;
+    OnJoinSessionCompleteEvent.Broadcast(false);
+    OnSessionErrorEvent.Broadcast(Reason);
+}
+
+void USessionSubsystem::OnDestroySessionBeforeJoin(FName SessionName, bool bWasSuccessful)
+{
+    if (SessionName != NAME_GameSession || JoinFlow != EJoinFlow::DestroyingPrevious) return;
+    if (SessionInterface.IsValid())
+        SessionInterface->ClearOnDestroySessionCompleteDelegate_Handle(DestroyBeforeJoinDelegateHandle);
+    DestroyBeforeJoinDelegateHandle.Reset();
+    if (bJoinTimedOut) { ResetJoinAttempt(); return; }
+    if (!bWasSuccessful || !SessionInterface.IsValid() || SessionInterface->GetNamedSession(NAME_GameSession))
+    {
+        FailJoin(TEXT("이전 방의 세션을 정리하지 못했습니다. 다시 시도해주세요."));
+        return;
+    }
+    bIsLocalHost = false;
+    StartPendingJoin();
+}
+
+void USessionSubsystem::StartPendingJoin()
+{
+    const ULocalPlayer* LocalPlayer = GetGameInstance() ? GetGameInstance()->GetFirstGamePlayer() : nullptr;
+    if (!SessionInterface.IsValid() || !PendingJoinResult.IsSet() ||
+        !LocalPlayer || !LocalPlayer->GetPreferredUniqueNetId().IsValid())
+    {
+        FailJoin(TEXT("참가할 방 또는 로컬 플레이어 정보가 유효하지 않습니다."));
+        return;
+    }
+    JoinFlow = EJoinFlow::Joining;
+    bIsLocalHost = false;
+    JoinSessionCompleteDelegateHandle = SessionInterface->AddOnJoinSessionCompleteDelegate_Handle(
+        FOnJoinSessionCompleteDelegate::CreateUObject(this, &USessionSubsystem::OnJoinSessionComplete));
+    ArmJoinTimeout();
+    if (!SessionInterface->JoinSession(*LocalPlayer->GetPreferredUniqueNetId(), NAME_GameSession, PendingJoinResult.GetValue())
+        && JoinFlow == EJoinFlow::Joining)
+        FailJoin(TEXT("방 참가 요청을 시작하지 못했습니다."));
+}
+
 void USessionSubsystem::FindRooms()
 {
     if (!SessionInterface.IsValid())
@@ -474,10 +637,20 @@ void USessionSubsystem::FindRooms()
         return;
     }
 
-    // 진행 중 검색이 있으면 중복 발사 차단 (Steam OSS는 동시 FindSessions를 깔끔히 처리 못함)
-    if (SessionSearch.IsValid() && SessionSearch->SearchState == EOnlineAsyncTaskState::InProgress)
+    if (bFindingRooms)
     {
-        UE_LOG(LogSessionSubsystem, Warning, TEXT("FindRooms: search already in progress — ignored."));
+        if (bFindTimedOut) OnRoomsFoundEvent.Broadcast(false, TArray<FRoomListEntry>());
+        return;
+    }
+    if (IsJoiningRoom() || bCleanupInProgress || !PendingReturnToMainMenuMapPath.IsEmpty())
+    {
+        OnRoomsFoundEvent.Broadcast(false, TArray<FRoomListEntry>());
+        return;
+    }
+    const ULocalPlayer* LocalPlayer = GetGameInstance() ? GetGameInstance()->GetFirstGamePlayer() : nullptr;
+    if (!LocalPlayer || !LocalPlayer->GetPreferredUniqueNetId().IsValid())
+    {
+        OnRoomsFoundEvent.Broadcast(false, TArray<FRoomListEntry>());
         return;
     }
 
@@ -497,21 +670,24 @@ void USessionSubsystem::FindRooms()
     FindSessionsCompleteDelegateHandle = SessionInterface->AddOnFindSessionsCompleteDelegate_Handle(
         FOnFindSessionsCompleteDelegate::CreateUObject(this, &USessionSubsystem::OnFindSessionsComplete));
 
-    const ULocalPlayer* LocalPlayer = GetWorld()->GetFirstLocalPlayerFromController();
-    if (LocalPlayer == nullptr)
+    bFindingRooms = true;
+    bFindTimedOut = false;
+    FindTimeoutHandle = FTSTicker::GetCoreTicker().AddTicker(
+        FTickerDelegate::CreateWeakLambda(this, [this](float) { OnFindTimeout(); return false; }), 25.0f);
+    if (!SessionInterface->FindSessions(*LocalPlayer->GetPreferredUniqueNetId(), SessionSearch.ToSharedRef()) && bFindingRooms)
     {
-        UE_LOG(LogSessionSubsystem, Error, TEXT("FindRooms: LocalPlayer null."));
+        FinishFindRequest();
+        SessionSearch.Reset();
         OnRoomsFoundEvent.Broadcast(false, TArray<FRoomListEntry>());
-        return;
     }
-
-    UE_LOG(LogSessionSubsystem, Warning, TEXT("FindRooms: 검색 시작."));
-    SessionInterface->FindSessions(*LocalPlayer->GetPreferredUniqueNetId(), SessionSearch.ToSharedRef());
 }
-
 
 void USessionSubsystem::OnFindSessionsComplete(bool bWasSuccessful)
 {
+    if (!bFindingRooms) return;
+    const bool bDiscard = bFindTimedOut;
+    FinishFindRequest();
+    if (bDiscard) { SessionSearch.Reset(); return; }
     if (SessionInterface.IsValid())
     {
         SessionInterface->ClearOnFindSessionsCompleteDelegate_Handle(FindSessionsCompleteDelegateHandle);
@@ -579,6 +755,16 @@ void USessionSubsystem::OnFindSessionsComplete(bool bWasSuccessful)
 // ---------------------------------------------------------
 void USessionSubsystem::JoinRoomByIndex(int32 SearchResultIndex)
 {
+    if (IsJoiningRoom())
+    {
+        if (bJoinTimedOut) OnSessionErrorEvent.Broadcast(TEXT("이전 참가 요청을 정리 중입니다. 잠시 후 다시 시도해주세요."));
+        return;
+    }
+    if (bFindingRooms || bCleanupInProgress || !PendingReturnToMainMenuMapPath.IsEmpty())
+    {
+        OnJoinSessionCompleteEvent.Broadcast(false);
+        return;
+    }
     if (!SessionInterface.IsValid() || !SessionSearch.IsValid())
     {
         UE_LOG(LogSessionSubsystem, Warning, TEXT("JoinRoomByIndex: no SessionInterface/SessionSearch."));
@@ -621,34 +807,37 @@ void USessionSubsystem::JoinRoomByIndex(int32 SearchResultIndex)
         return;
     }
 
-    // 기존 세션 정리 (재참가/이전 참가 잔여)
-    if (SessionInterface->GetNamedSession(NAME_GameSession) != nullptr)
+    const ULocalPlayer* LocalPlayer = GetGameInstance() ? GetGameInstance()->GetFirstGamePlayer() : nullptr;
+    if (!LocalPlayer || !LocalPlayer->GetPreferredUniqueNetId().IsValid())
     {
-        SessionInterface->DestroySession(NAME_GameSession);
-        bIsLocalHost = false;
-    }
-
-    SessionInterface->ClearOnJoinSessionCompleteDelegate_Handle(JoinSessionCompleteDelegateHandle);
-    JoinSessionCompleteDelegateHandle = SessionInterface->AddOnJoinSessionCompleteDelegate_Handle(
-        FOnJoinSessionCompleteDelegate::CreateUObject(this, &USessionSubsystem::OnJoinSessionComplete));
-
-    const ULocalPlayer* LocalPlayer = GetWorld()->GetFirstLocalPlayerFromController();
-    if (LocalPlayer == nullptr)
-    {
-        UE_LOG(LogSessionSubsystem, Error, TEXT("JoinRoomByIndex: LocalPlayer null."));
-        OnSessionErrorEvent.Broadcast(TEXT("로컬 플레이어 정보를 가져올 수 없습니다."));
-        OnJoinSessionCompleteEvent.Broadcast(false);
+        FailJoin(TEXT("로컬 플레이어 정보를 가져올 수 없습니다."));
         return;
     }
-
-    UE_LOG(LogSessionSubsystem, Warning, TEXT("JoinRoomByIndex: idx=%d match_id=%s — JoinSession 발사."),
-        SearchResultIndex, *PendingMatchId);
-    SessionInterface->JoinSession(*LocalPlayer->GetPreferredUniqueNetId(), NAME_GameSession, Result);
+    PendingJoinResult = Result; // 검색 목록이 바뀌어도 선택한 방의 복사본을 사용합니다.
+    ++JoinRequestId;
+    bJoinTimedOut = false;
+    if (SessionInterface->GetNamedSession(NAME_GameSession))
+    {
+        JoinFlow = EJoinFlow::DestroyingPrevious;
+        DestroyBeforeJoinDelegateHandle = SessionInterface->AddOnDestroySessionCompleteDelegate_Handle(
+            FOnDestroySessionCompleteDelegate::CreateUObject(this, &USessionSubsystem::OnDestroySessionBeforeJoin));
+        ArmJoinTimeout();
+        if (!SessionInterface->DestroySession(NAME_GameSession) && JoinFlow == EJoinFlow::DestroyingPrevious)
+            FailJoin(TEXT("이전 방의 세션 정리를 시작하지 못했습니다."));
+        return;
+    }
+    StartPendingJoin();
 }
-
 
 void USessionSubsystem::OnJoinSessionComplete(FName SessionName, EOnJoinSessionCompleteResult::Type Result)
 {
+    if (SessionName != NAME_GameSession || JoinFlow != EJoinFlow::Joining) return;
+    if (bJoinTimedOut)
+    {
+        ResetJoinAttempt();
+        if (Result == EOnJoinSessionCompleteResult::Success) CleanupHostSession(FString());
+        return;
+    }
     if (SessionInterface.IsValid())
     {
         SessionInterface->ClearOnJoinSessionCompleteDelegate_Handle(JoinSessionCompleteDelegateHandle);
@@ -665,13 +854,14 @@ void USessionSubsystem::OnJoinSessionComplete(FName SessionName, EOnJoinSessionC
             // Join은 성공해서 호스트 Lobby 멤버로 들어간 상태 — match_id만 누락.
             // 그냥 return하면 호스트 슬롯 점유한 채 leak되므로 명시적 leave 필수.
             UE_LOG(LogSessionSubsystem, Error, TEXT("Join OK but MatchId missing in SessionSettings."));
-            CleanupHostSession(TEXT("방 정보가 손상되었습니다. 다른 방을 시도해주세요."));
-            OnJoinSessionCompleteEvent.Broadcast(false);
+            FailJoin(TEXT("방 정보가 손상되었습니다. 다른 방을 시도해주세요."), true);
             return;
         }
 
         // dedi 주소를 매치메이커에 인증 조회 → 응답에서 ClientTravel.
         UE_LOG(LogSessionSubsystem, Warning, TEXT("Join OK → /address 조회 (match_id=%s)"), *PendingMatchId);
+        JoinFlow = EJoinFlow::ResolvingAddress;
+        ArmJoinTimeout();
         RequestDediAddress(PendingMatchId);
     }
     else
@@ -689,8 +879,7 @@ void USessionSubsystem::OnJoinSessionComplete(FName SessionName, EOnJoinSessionC
         }
         // Join 실패 시점에는 호스트 Lobby에 합류한 적이 없음 (OSS가 자체 정리).
         // 사유 모달만 띄우면 됨 — 명시적 DestroySession 불필요.
-        OnSessionErrorEvent.Broadcast(Reason);
-        OnJoinSessionCompleteEvent.Broadcast(false);
+        FailJoin(Reason);
     }
 }
 
@@ -700,26 +889,28 @@ void USessionSubsystem::OnJoinSessionComplete(FName SessionName, EOnJoinSessionC
 // ---------------------------------------------------------
 void USessionSubsystem::RequestDediAddress(const FString& MatchId)
 {
+    if (JoinFlow != EJoinFlow::ResolvingAddress) return;
+    const uint64 RequestId = JoinRequestId;
     #if !MATCHMAKER_USE_MOCK
     USteamCredentialsSubsystem* SteamCreds =
         GetGameInstance() ? GetGameInstance()->GetSubsystem<USteamCredentialsSubsystem>() : nullptr;
     if (!SteamCreds)
     {
         UE_LOG(LogSessionSubsystem, Error, TEXT("[SessionSubsystem] SteamCredentialsSubsystem 없음 — /address 중단."));
-        CleanupHostSession(TEXT("Steam 인증 정보를 가져올 수 없습니다. Steam 로그인 상태를 확인해주세요."));
+        FailJoin(TEXT("Steam 인증 정보를 가져올 수 없습니다. Steam 로그인 상태를 확인해주세요."), true);
         return;
     }
 
     TWeakObjectPtr<USessionSubsystem> WeakThis(this);
     const FString CapturedMatchId = MatchId;
     SteamCreds->RequestTicket(
-        [WeakThis, CapturedMatchId](bool bOk, FString SteamTicketHex, FString JoinerSteamId)
+        [WeakThis, CapturedMatchId, RequestId](bool bOk, FString SteamTicketHex, FString JoinerSteamId)
         {
-            if (!WeakThis.IsValid()) return;
+            if (!WeakThis.IsValid() || !WeakThis->IsCurrentAddressRequest(RequestId)) return;
             if (!bOk)
             {
                 UE_LOG(LogSessionSubsystem, Error, TEXT("[SessionSubsystem] Steam credentials 획득 실패 — /address 중단."));
-                WeakThis->CleanupHostSession(TEXT("Steam 인증 정보를 가져올 수 없습니다. Steam 로그인 상태를 확인해주세요."));
+                WeakThis->FailJoin(TEXT("Steam 인증 정보를 가져올 수 없습니다. Steam 로그인 상태를 확인해주세요."), true);
                 return;
             }
 
@@ -734,16 +925,17 @@ void USessionSubsystem::RequestDediAddress(const FString& MatchId)
             Req->SetContentAsString(Body);
             Req->SetTimeout(15.0f);
             Req->OnProcessRequestComplete().BindLambda(
-                [WeakThis](FHttpRequestPtr, FHttpResponsePtr Resp, bool bHttpOk)
+                [WeakThis, RequestId](FHttpRequestPtr, FHttpResponsePtr Resp, bool bHttpOk)
                 {
-                    if (!WeakThis.IsValid()) return;
+                    if (!WeakThis.IsValid() || !WeakThis->IsCurrentAddressRequest(RequestId)) return;
                     const int32 Code = (Resp.IsValid()) ? Resp->GetResponseCode() : 0;
                     WeakThis->HandleAddressResponse(
                         Resp.IsValid() ? Resp->GetContentAsString() : FString(),
                         Code,
                         bHttpOk && Resp.IsValid() && Code == 200);
                 });
-            Req->ProcessRequest();
+            if (!Req->ProcessRequest() && WeakThis->IsCurrentAddressRequest(RequestId))
+                WeakThis->FailJoin(TEXT("서버 주소 조회 요청을 시작하지 못했습니다."), true);
         });
     return;
     #else
@@ -756,6 +948,7 @@ void USessionSubsystem::RequestDediAddress(const FString& MatchId)
 
 void USessionSubsystem::HandleAddressResponse(const FString& JsonBody, int32 HttpCode, bool bOk)
 {
+    if (JoinFlow != EJoinFlow::ResolvingAddress) return;
     if (!bOk)
     {
         UE_LOG(LogSessionSubsystem, Error, TEXT("Address request failed (code=%d). body=%s"), HttpCode, *JsonBody);
@@ -767,8 +960,7 @@ void USessionSubsystem::HandleAddressResponse(const FString& JsonBody, int32 Htt
         case 404: Reason = TEXT("해당 방이 더 이상 존재하지 않습니다."); break;
         default:  Reason = TEXT("매치메이커 응답 실패. 잠시 후 다시 시도해주세요."); break;
         }
-        CleanupHostSession(Reason);
-        OnJoinSessionCompleteEvent.Broadcast(false);
+        FailJoin(Reason, true);
         return;
     }
 
@@ -777,8 +969,7 @@ void USessionSubsystem::HandleAddressResponse(const FString& JsonBody, int32 Htt
     if (!FJsonSerializer::Deserialize(Reader, Json) || !Json.IsValid())
     {
         UE_LOG(LogSessionSubsystem, Error, TEXT("Address response parse failed: %s"), *JsonBody);
-        CleanupHostSession(TEXT("매치메이커 응답 형식이 올바르지 않습니다."));
-        OnJoinSessionCompleteEvent.Broadcast(false);
+        FailJoin(TEXT("매치메이커 응답 형식이 올바르지 않습니다."), true);
         return;
     }
 
@@ -789,16 +980,20 @@ void USessionSubsystem::HandleAddressResponse(const FString& JsonBody, int32 Htt
         ServerIp.IsEmpty() || Port <= 0)
     {
         UE_LOG(LogSessionSubsystem, Error, TEXT("Address response missing server_ip/port: %s"), *JsonBody);
-        CleanupHostSession(TEXT("방 정보가 손상되었습니다. 다른 방을 시도해주세요."));
-        OnJoinSessionCompleteEvent.Broadcast(false);
+        FailJoin(TEXT("방 정보가 손상되었습니다. 다른 방을 시도해주세요."), true);
         return;
     }
 
     PendingDediURL = FString::Printf(TEXT("%s:%d"), *ServerIp, Port);
     UE_LOG(LogSessionSubsystem, Warning, TEXT("Address OK → ClientTravel %s"), *PendingDediURL);
-    if (APlayerController* PC = GetGameInstance()->GetFirstLocalPlayerController())
+    APlayerController* PC = GetGameInstance() ? GetGameInstance()->GetFirstLocalPlayerController() : nullptr;
+    if (!PC)
     {
-        PC->ClientTravel(PendingDediURL, ETravelType::TRAVEL_Absolute);
+        FailJoin(TEXT("서버로 이동할 플레이어 컨트롤러가 없습니다."), true);
+        return;
     }
+    const FString TravelURL = PendingDediURL;
+    ResetJoinAttempt();
+    PC->ClientTravel(TravelURL, ETravelType::TRAVEL_Absolute);
     OnJoinSessionCompleteEvent.Broadcast(true);
 }

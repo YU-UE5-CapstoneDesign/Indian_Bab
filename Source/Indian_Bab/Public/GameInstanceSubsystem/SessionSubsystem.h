@@ -6,6 +6,8 @@
 #include "Subsystems/GameInstanceSubsystem.h"
 #include "Logging/LogMacros.h"
 #include "Interfaces/OnlineSessionInterface.h"
+#include "OnlineSessionSettings.h"
+#include "Containers/Ticker.h"
 #include "SessionSubsystem.generated.h"
 
 
@@ -56,6 +58,8 @@ UCLASS()
 class INDIAN_BAB_API USessionSubsystem : public UGameInstanceSubsystem
 {
 	GENERATED_BODY()
+
+    friend class FRoomSessionFlowTest;
 
 public:
     // 서브시스템 초기화 및 종료 (생성자/소멸자 역할)
@@ -122,6 +126,7 @@ public:
     // 활성 NAME_GameSession 보유 여부 — GameInstance가 NetworkFailure/TravelFailure를
     // 데디 트래블 실패로 해석할지(세션 오류) 인터넷 단절로 해석할지(오프라인 모달) 분기에 사용.
     bool IsInActiveSession() const;
+    bool IsJoiningRoom() const { return JoinFlow != EJoinFlow::Idle; }
 
     // 매치메이커가 발급한 match_id(UUID)를 SessionSettings에 심는 키.
     // dedi ip:port 평문 광고를 피하기 위해 lobby에는 match_id만 노출 → 조이너가
@@ -139,6 +144,29 @@ public:
     static const int32 GameTagMagic;
 
 protected:
+    enum class EJoinFlow : uint8 { Idle, DestroyingPrevious, Joining, ResolvingAddress };
+    EJoinFlow JoinFlow = EJoinFlow::Idle;
+    bool bFindingRooms = false;
+    bool bFindTimedOut = false;
+    bool bJoinTimedOut = false;
+    bool bCleanupInProgress = false;
+    uint64 JoinRequestId = 0;
+    TOptional<FOnlineSessionSearchResult> PendingJoinResult;
+    FDelegateHandle DestroyBeforeJoinDelegateHandle;
+    FTSTicker::FDelegateHandle FindTimeoutHandle;
+    FTSTicker::FDelegateHandle JoinTimeoutHandle;
+    FTSTicker::FDelegateHandle CleanupTimeoutHandle;
+
+    void StartPendingJoin();
+    void OnDestroySessionBeforeJoin(FName SessionName, bool bWasSuccessful);
+    void ResetJoinAttempt();
+    void FailJoin(const FString& Reason, bool bCleanupSession = false);
+    void ArmJoinTimeout();
+    void OnJoinTimeout();
+    void OnFindTimeout();
+    void FinishFindRequest();
+    bool IsCurrentAddressRequest(uint64 RequestId) const;
+
     IOnlineSessionPtr SessionInterface;
     TSharedPtr<class FOnlineSessionSearch> SessionSearch;
 

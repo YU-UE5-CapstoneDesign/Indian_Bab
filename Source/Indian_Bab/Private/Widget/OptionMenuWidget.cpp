@@ -49,6 +49,7 @@ void UOptionMenuWidget::NativeConstruct()
 	Slider_ScreenBrightness->OnValueChanged.AddDynamic(this, &UOptionMenuWidget::OnScreenBrightnessChanged);
 	// 콤보박스
 	ComboBoxString_ScreenResolution->OnSelectionChanged.AddDynamic(this, &UOptionMenuWidget::OnScreenResolutionChanged);
+	if (ComboBoxString_RefreshRate) ComboBoxString_RefreshRate->OnSelectionChanged.AddDynamic(this, &UOptionMenuWidget::OnRefreshRateChanged);
 	ComboBoxString_WindowMode->OnSelectionChanged.AddDynamic(this, &UOptionMenuWidget::OnWindowModeChanged);
 	// 메인 버튼
 	Button_Apply->OnClicked.AddDynamic(this, &UOptionMenuWidget::OnApplyClicked);
@@ -62,6 +63,7 @@ void UOptionMenuWidget::NativeConstruct()
 	Button_ResetMouseSensitivity->OnClicked.AddDynamic(this, &UOptionMenuWidget::OnResetMouseSensitivityClicked);
 	Button_ResetScreenBrightness->OnClicked.AddDynamic(this, &UOptionMenuWidget::OnResetScreenBrightnessClicked);
 	Button_ResetScreenResolution->OnClicked.AddDynamic(this, &UOptionMenuWidget::OnResetScreenResolutionClicked);
+	if (Button_ResetRefreshRate) Button_ResetRefreshRate->OnClicked.AddDynamic(this, &UOptionMenuWidget::OnResetRefreshRateClicked);
 	Button_ResetWindowMode->OnClicked.AddDynamic(this, &UOptionMenuWidget::OnResetWindowModeClicked);
 
 	// --- 콤보박스 채우기 ---
@@ -94,6 +96,7 @@ void UOptionMenuWidget::NativeDestruct()
 
 	// 콤보박스
 	if (ComboBoxString_ScreenResolution) ComboBoxString_ScreenResolution->OnSelectionChanged.RemoveAll(this);
+	if (ComboBoxString_RefreshRate)    ComboBoxString_RefreshRate->OnSelectionChanged.RemoveAll(this);
 	if (ComboBoxString_WindowMode)       ComboBoxString_WindowMode->OnSelectionChanged.RemoveAll(this);
 
 	// 메인 버튼
@@ -108,6 +111,7 @@ void UOptionMenuWidget::NativeDestruct()
 	if (Button_ResetMouseSensitivity) Button_ResetMouseSensitivity->OnClicked.RemoveAll(this);
 	if (Button_ResetScreenBrightness) Button_ResetScreenBrightness->OnClicked.RemoveAll(this);
 	if (Button_ResetScreenResolution) Button_ResetScreenResolution->OnClicked.RemoveAll(this);
+	if (Button_ResetRefreshRate)      Button_ResetRefreshRate->OnClicked.RemoveAll(this);
 	if (Button_ResetWindowMode)       Button_ResetWindowMode->OnClicked.RemoveAll(this);
 
 	Super::NativeDestruct();
@@ -194,13 +198,15 @@ void UOptionMenuWidget::InitializeSettings()
 	SavedSettings.MasterVolume = SettingSubsystem->GetMasterVolume();
 	SavedSettings.MouseSensitivity = SettingSubsystem->GetMouseSensitivity();
 	SavedSettings.ScreenBrightness = SettingSubsystem->GetScreenBrightness();
-	SavedSettings.ResolutionIndex = SettingSubsystem->GetResolutionIndex();
+	SavedSettings.Resolution = SettingSubsystem->GetSavedResolution();
+	SavedSettings.RefreshRate = SettingSubsystem->GetSavedRefreshRate();
 	SavedSettings.WindowModeIndex = SettingSubsystem->GetWindowModeIndex();
 
 	DefaultSettings.MasterVolume = SettingSubsystem->GetDefaultMasterVolume();
 	DefaultSettings.MouseSensitivity = SettingSubsystem->GetDefaultMouseSensitivity();
 	DefaultSettings.ScreenBrightness = SettingSubsystem->GetDefaultScreenBrightness();
-	DefaultSettings.ResolutionIndex = SettingSubsystem->GetDefaultResolutionIndex();
+	DefaultSettings.Resolution = SettingSubsystem->GetDefaultResolution();
+	DefaultSettings.RefreshRate = SettingSubsystem->GetDefaultRefreshRate();
 	DefaultSettings.WindowModeIndex = SettingSubsystem->GetDefaultWindowModeIndex();
 
 	// Staged 값을 Saved 값으로 초기화
@@ -220,8 +226,31 @@ void UOptionMenuWidget::PopulateUIFromStagedSettings()
 	Slider_MasterVolume->SetValue(StagedSettings.MasterVolume);
 	Slider_MouseSensitivity->SetValue(StagedSettings.MouseSensitivity);
 	Slider_ScreenBrightness->SetValue(StagedSettings.ScreenBrightness);
-	ComboBoxString_ScreenResolution->SetSelectedIndex(StagedSettings.ResolutionIndex);
+	bUpdatingDisplayOptions = true;
+	ComboBoxString_ScreenResolution->SetSelectedOption(StagedSettings.Resolution);
+	bUpdatingDisplayOptions = false;
+	UpdateRefreshRateOptions();
 	ComboBoxString_WindowMode->SetSelectedIndex(StagedSettings.WindowModeIndex);
+}
+
+void UOptionMenuWidget::UpdateRefreshRateOptions()
+{
+	const TArray<FString> Rates = SettingSubsystem->GetSupportedRefreshRates(StagedSettings.Resolution);
+	const FString SelectedRate = FString::Printf(TEXT("%d FPS"), StagedSettings.RefreshRate);
+	if (!Rates.Contains(SelectedRate))
+	{
+		StagedSettings.RefreshRate = Rates.IsEmpty() ? 0 : FCString::Atoi(*Rates.Last());
+	}
+	if (!ComboBoxString_RefreshRate) return;
+	bUpdatingDisplayOptions = true;
+	ComboBoxString_RefreshRate->ClearOptions();
+	for (const FString& Rate : Rates) ComboBoxString_RefreshRate->AddOption(Rate);
+	ComboBoxString_RefreshRate->SetIsEnabled(!Rates.IsEmpty());
+	if (!Rates.IsEmpty())
+	{
+		ComboBoxString_RefreshRate->SetSelectedOption(FString::Printf(TEXT("%d FPS"), StagedSettings.RefreshRate));
+	}
+	bUpdatingDisplayOptions = false;
 }
 
 
@@ -249,7 +278,16 @@ void UOptionMenuWidget::OnScreenBrightnessChanged(float Value)
 
 void UOptionMenuWidget::OnScreenResolutionChanged(FString SelectedItem, ESelectInfo::Type SelectionType)
 {
-	StagedSettings.ResolutionIndex = ComboBoxString_ScreenResolution->GetSelectedIndex();
+	if (bUpdatingDisplayOptions) return;
+	StagedSettings.Resolution = SelectedItem;
+	UpdateRefreshRateOptions();
+	UpdateUIState();
+}
+
+void UOptionMenuWidget::OnRefreshRateChanged(FString SelectedItem, ESelectInfo::Type SelectionType)
+{
+	if (bUpdatingDisplayOptions) return;
+	StagedSettings.RefreshRate = FCString::Atoi(*SelectedItem);
 	UpdateUIState();
 }
 
@@ -277,7 +315,8 @@ void UOptionMenuWidget::UpdateUIState()
 	Button_ResetMasterVolume->SetVisibility(StagedSettings.MasterVolume != DefaultSettings.MasterVolume ? ESlateVisibility::Visible : ESlateVisibility::Hidden);
 	Button_ResetMouseSensitivity->SetVisibility(StagedSettings.MouseSensitivity != DefaultSettings.MouseSensitivity ? ESlateVisibility::Visible : ESlateVisibility::Hidden);
 	Button_ResetScreenBrightness->SetVisibility(StagedSettings.ScreenBrightness != DefaultSettings.ScreenBrightness ? ESlateVisibility::Visible : ESlateVisibility::Hidden);
-	Button_ResetScreenResolution->SetVisibility(StagedSettings.ResolutionIndex != DefaultSettings.ResolutionIndex ? ESlateVisibility::Visible : ESlateVisibility::Hidden);
+	Button_ResetScreenResolution->SetVisibility(StagedSettings.Resolution != DefaultSettings.Resolution ? ESlateVisibility::Visible : ESlateVisibility::Hidden);
+	if (Button_ResetRefreshRate) Button_ResetRefreshRate->SetVisibility(StagedSettings.RefreshRate != DefaultSettings.RefreshRate ? ESlateVisibility::Visible : ESlateVisibility::Hidden);
 	Button_ResetWindowMode->SetVisibility(StagedSettings.WindowModeIndex != DefaultSettings.WindowModeIndex ? ESlateVisibility::Visible : ESlateVisibility::Hidden);
 }
 
@@ -292,7 +331,7 @@ void UOptionMenuWidget::OnApplyClicked()
 	SettingSubsystem->SetMasterVolume(StagedSettings.MasterVolume);
 	SettingSubsystem->SetMouseSensitivity(StagedSettings.MouseSensitivity);
 	SettingSubsystem->SetScreenBrightness(StagedSettings.ScreenBrightness);
-	SettingSubsystem->SetResolutionIndex(StagedSettings.ResolutionIndex);
+	SettingSubsystem->SetDisplayModeValues(StagedSettings.Resolution, StagedSettings.RefreshRate);
 	SettingSubsystem->SetWindowModeIndex(StagedSettings.WindowModeIndex);
 
 	// Subsystem에 적용 및 저장 요청
@@ -427,7 +466,17 @@ void UOptionMenuWidget::OnResetScreenBrightnessClicked()
 
 void UOptionMenuWidget::OnResetScreenResolutionClicked()
 {
-	StagedSettings.ResolutionIndex = DefaultSettings.ResolutionIndex;
+	StagedSettings.Resolution = DefaultSettings.Resolution;
+	StagedSettings.RefreshRate = DefaultSettings.RefreshRate;
+	PopulateUIFromStagedSettings();
+	UpdateUIState();
+}
+
+void UOptionMenuWidget::OnResetRefreshRateClicked()
+{
+	const TArray<FString> Rates = SettingSubsystem->GetSupportedRefreshRates(StagedSettings.Resolution);
+	const FString DefaultRate = FString::Printf(TEXT("%d FPS"), DefaultSettings.RefreshRate);
+	StagedSettings.RefreshRate = Rates.Contains(DefaultRate) ? DefaultSettings.RefreshRate : (Rates.IsEmpty() ? 0 : FCString::Atoi(*Rates.Last()));
 	PopulateUIFromStagedSettings();
 	UpdateUIState();
 }
