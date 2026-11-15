@@ -19,6 +19,10 @@
 #include "HeadMountedDisplayFunctionLibrary.h"
 #include "InputCoreTypes.h"
 #include "MotionControllerComponent.h"
+#include "NiagaraComponent.h"
+#include "NiagaraDataInterfaceArrayFunctionLibrary.h"
+#include "NiagaraSystem.h"
+#include "UObject/ConstructorHelpers.h"
 #include "PlayerController/MainGamePlayerController.h"
 #include "Widget/GameResultWidget.h"
 #include "Widget/MainGameWidget.h"
@@ -115,6 +119,25 @@ ALobbyVRCharacter::ALobbyVRCharacter()
 
 	WidgetInteractionLeft = CreateDefaultSubobject<UWidgetInteractionComponent>(TEXT("WidgetInteractionLeft"));
 	WidgetInteractionLeft->SetupAttachment(MotionControllerLeftAim);
+
+	PointerLaserRight = CreateDefaultSubobject<UNiagaraComponent>(TEXT("PointerLaserRight"));
+	PointerLaserRight->SetupAttachment(MotionControllerRightAim);
+	PointerLaserRight->SetAutoActivate(false);
+
+	PointerLaserLeft = CreateDefaultSubobject<UNiagaraComponent>(TEXT("PointerLaserLeft"));
+	PointerLaserLeft->SetupAttachment(MotionControllerLeftAim);
+	PointerLaserLeft->SetAutoActivate(false);
+
+	// 빔은 로컬 클라에서만 켜지므로 데디는 에셋을 찾지 않습니다.
+	if (!IsRunningDedicatedServer())
+	{
+		static ConstructorHelpers::FObjectFinder<UNiagaraSystem> PointerLaserSystem(TEXT("/Game/VRTemplate/VFX/NS_MenuLaser.NS_MenuLaser"));
+		if (PointerLaserSystem.Succeeded())
+		{
+			PointerLaserRight->SetAsset(PointerLaserSystem.Object);
+			PointerLaserLeft->SetAsset(PointerLaserSystem.Object);
+		}
+	}
 
 	ReadyWidgetComponent = CreateDefaultSubobject<UWidgetComponent>(TEXT("ReadyWidget"));
 	ReadyWidgetComponent->SetupAttachment(CameraComponent);
@@ -771,21 +794,32 @@ void ALobbyVRCharacter::UpdateVRPointers()
 
 void ALobbyVRCharacter::UpdateLaserPointer(const UMotionControllerComponent* AimController, const TCHAR* PointerName) 
 {
-	if (!AimController || !GetWorld() || !bShowVRPointer)
-	{
-		return;
-	}
+	const bool bRightHand = AimController == MotionControllerRightAim.Get();
+	UNiagaraComponent* Laser = bRightHand ? PointerLaserRight.Get() : PointerLaserLeft.Get();
 
 	FVector Start;
 	FVector TraceEnd;
-	if (AimController == MotionControllerRightAim.Get())
+	bool bHasTrace = AimController && GetWorld() && bShowVRPointer;
+	if (bHasTrace)
 	{
-		if (!GetRightHandShotTrace(Start, TraceEnd)) return;
+		if (bRightHand)
+		{
+			bHasTrace = GetRightHandShotTrace(Start, TraceEnd);
+		}
+		else
+		{
+			Start = AimController->GetComponentLocation();
+			TraceEnd = Start + AimController->GetForwardVector() * VRPointerMaxDistance;
+		}
 	}
-	else
+
+	if (!bHasTrace)
 	{
-		Start = AimController->GetComponentLocation();
-		TraceEnd = Start + AimController->GetForwardVector() * VRPointerMaxDistance;
+		if (Laser && Laser->IsActive())
+		{
+			Laser->DeactivateImmediate();
+		}
+		return;
 	}
 
 	FHitResult HitResult;
@@ -793,16 +827,14 @@ void ALobbyVRCharacter::UpdateLaserPointer(const UMotionControllerComponent* Aim
 	const bool bHit = GetWorld()->LineTraceSingleByChannel(HitResult, Start, TraceEnd, ECC_Visibility, QueryParams);
 	const FVector End = bHit ? HitResult.ImpactPoint : TraceEnd;
 
-	const FColor LineColor = FColor(80, 220, 255);
-	DrawDebugLine(
-		GetWorld(),
-		Start,
-		End,
-		LineColor,
-		false,
-		0.0f,
-		0,
-		LaserThickness);
+	if (Laser)
+	{
+		UNiagaraDataInterfaceArrayFunctionLibrary::SetNiagaraArrayVector(Laser, TEXT("User.PointArray"), TArray<FVector>{ Start, End });
+		if (!Laser->IsActive())
+		{
+			Laser->Activate(true);
+		}
+	}
 
 	AActor* NewHitRevolver = nullptr;
 
