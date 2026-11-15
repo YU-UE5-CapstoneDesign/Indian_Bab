@@ -7,6 +7,7 @@
 
 class ASeatActor;
 class UMotionControllerComponent;
+class UNiagaraComponent;
 class UGameResultWidget;
 class UReadyWidget;
 class USceneComponent;
@@ -124,6 +125,13 @@ public:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "VR")
 	TObjectPtr<UWidgetInteractionComponent> WidgetInteractionLeft;
 
+	// 손에서 나가는 포인터 빔(로컬 플레이어에게만 켜짐). 에셋은 User.PointArray[0]=시작, [1]=끝을 받는다.
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "VR|Pointer")
+	TObjectPtr<UNiagaraComponent> PointerLaserRight;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "VR|Pointer")
+	TObjectPtr<UNiagaraComponent> PointerLaserLeft;
+
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "VR UI")
 	TObjectPtr<UWidgetComponent> ReadyWidgetComponent;
 
@@ -171,9 +179,6 @@ public:
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "VR|Pointer")
 	float VRPointerMaxDistance = 500.0f;
-
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "VR|Pointer")
-	float LaserThickness = 0.5f;
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "VR|Pointer")
 	bool bShowVRPointer = true;
