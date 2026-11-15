@@ -1,6 +1,9 @@
 ﻿#include "Character/LobbyVRCharacter.h"
 
 #include "Actor/Revolver.h"
+#include "Animation/AnimInstance.h"
+#include "Animation/AnimMontage.h"
+#include "GroomComponent.h"
 #include "Actor/SeatActor.h"
 #include "Game/MainGameMode.h"
 #include "Camera/CameraComponent.h"
@@ -74,6 +77,12 @@ ALobbyVRCharacter::ALobbyVRCharacter()
 	MetaHumanFaceAnimation->SetupAttachment(MetaHumanBodyAnimation);
 	MetaHumanFaceAnimation->SetOwnerNoSee(true);
 	MetaHumanFaceAnimation->SetLeaderPoseComponent(MetaHumanBodyAnimation);
+
+	VRAnimationRevolverMesh = CreateDefaultSubobject<USkeletalMeshComponent>(TEXT("VRAnimationRevolver"));
+	VRAnimationRevolverMesh->SetupAttachment(MetaHumanBodyAnimation, FName("Revolver"));
+	VRAnimationRevolverMesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+	VRAnimationRevolverMesh->SetVisibility(false);
+	VRAnimationRevolverMesh->SetHiddenInGame(true);
 
 	MotionControllerRightGrip = CreateDefaultSubobject<UMotionControllerComponent>(TEXT("MotionControllerRightGrip"));
 	MotionControllerRightGrip->SetupAttachment(VROrigin);
@@ -446,7 +455,7 @@ void ALobbyVRCharacter::ConfigureLocalVRTracking()
 
 	if (CameraComponent)
 	{
-		CameraComponent->bLockToHmd = bLocalTrackingOwner;
+		CameraComponent->bLockToHmd = bLocalTrackingOwner && !VRMainAnimationCameraState.bActive;
 	}
 
 	auto ConfigureMotionControllerTracking = [bLocalTrackingOwner](UMotionControllerComponent* MotionController)
@@ -499,7 +508,7 @@ void ALobbyVRCharacter::ConfigureVRSeatedState()
 		}
 	}
 
-	if (CameraComponent)
+	if (CameraComponent && !VRMainAnimationCameraState.bActive)
 	{
 		if (CameraComponent->GetAttachParent() != VROrigin)
 		{
@@ -1022,6 +1031,13 @@ void ALobbyVRCharacter::GrabGun()
 			GetWorld() ? TEXT("valid") : TEXT("null"));
 	}
 
+	if (ActiveRevolver && ActiveRevolver->ActorHasTag(FName("MainRevolver")))
+	{
+		if (!bMainRevolverGrabInProgress && !bMainRevolverGrabbed && !bIsPuttingBackGun)
+			Server_GrabMainRevolver();
+		return;
+	}
+
 	if (GunHoldReason != EGunHoldReason::Win || !ActiveRevolver)
 	{
 		UE_LOG(LogTemp, Warning,
@@ -1032,19 +1048,6 @@ void ALobbyVRCharacter::GrabGun()
 		return;
 	}
 
-	if (ActiveRevolver->ActorHasTag(FName("MainRevolver")))
-	{
-		AttachMainRevolverToRightGrip();
-
-		if (!HasAuthority())
-		{
-			Server_GrabMainRevolver();
-		}
-
-		UE_LOG(LogTemp, Warning, TEXT("[VR Gun] MainRevolver grab requested. Revolver=%s"), *GetNameSafe(ActiveRevolver));
-		return;
-	}
-
 	UE_LOG(LogTemp, Warning, TEXT("[VR Gun] Non-main revolver grab path. Revolver=%s"), *GetNameSafe(ActiveRevolver));
 	AttachRevolverToSocket();
 	DrawMainShotAimLine();
@@ -1052,7 +1055,8 @@ void ALobbyVRCharacter::GrabGun()
 
 void ALobbyVRCharacter::Server_GrabMainRevolver_Implementation()
 {
-	if (GunHoldReason != EGunHoldReason::Win || !ActiveRevolver || !ActiveRevolver->ActorHasTag(FName("MainRevolver")))
+	if (bMainRevolverGrabInProgress || bMainRevolverGrabbed || bIsPuttingBackGun) return;
+	if (!ActiveRevolver || !ActiveRevolver->ActorHasTag(FName("MainRevolver")) || !GetWorld())
 	{
 		UE_LOG(LogTemp, Warning,
 			TEXT("[VR Gun] Server_GrabMainRevolver blocked. Char=%s Reason=%d ActiveRevolver=%s IsMain=%s"),
@@ -1063,8 +1067,248 @@ void ALobbyVRCharacter::Server_GrabMainRevolver_Implementation()
 		return;
 	}
 
-	AttachMainRevolverToRightGrip();
-	UE_LOG(LogTemp, Warning, TEXT("[VR Gun] Server attached MainRevolver. Char=%s Revolver=%s"), *GetNameSafe(this), *GetNameSafe(ActiveRevolver));
+	bMainRevolverGrabInProgress = true;
+#if WITH_SERVER_CODE
+	if (AMainGameMode* GM = GetWorld()->GetAuthGameMode<AMainGameMode>())
+		GM->HandleMainRevolverGrabStarted(this);
+#endif
+	Multicast_PlayVRMainRevolverGrabAnimation(ActiveRevolver.Get());
+}
+
+// PC처럼 집기 시작과 완료를 분리하고, 완료 콜백에서만 사격 타이머로 전환합니다.
+void ALobbyVRCharacter::Multicast_PlayVRMainRevolverGrabAnimation_Implementation(ARevolver* Revolver)
+{
+    if (!IsValid(Revolver)) return;
+    ActiveRevolver = Revolver;
+    bMainRevolverGrabInProgress = true;
+    bMainRevolverGrabbed = false;
+    bIsPuttingBackGun = false;
+    GunHoldReason = EGunHoldReason::Win;
+    SetMainShotAimLineVisible(false);
+    if (!PlayVRMainRevolverAnimation(Revolver, false))
+        OnGrabGunMontageEnded(nullptr, false);
+}
+
+void ALobbyVRCharacter::Multicast_CompleteVRMainRevolverGrab_Implementation()
+{
+    if (GunHoldReason != EGunHoldReason::Win || !ActiveRevolver) return;
+    RestoreVRMainGrabPresentation();
+    AttachMainRevolverToRightGrip();
+    bMainRevolverGrabInProgress = false;
+    bMainRevolverGrabbed = true;
+}
+
+void ALobbyVRCharacter::Multicast_ClearVRMainRevolver_Implementation()
+{
+    RestoreVRMainGrabPresentation();
+    bMainRevolverGrabInProgress = false;
+    bMainRevolverGrabbed = false;
+    bIsPuttingBackGun = false;
+    GunHoldReason = EGunHoldReason::None;
+    SetMainShotAimLineVisible(false);
+}
+
+bool ALobbyVRCharacter::PlayVRMainRevolverAnimation(ARevolver* Revolver, bool bPuttingBack)
+{
+    if (!IsValid(Revolver) || !Revolver->WeaponMesh || !MetaHumanBodyAnimation || !MainRevolverAnimationBody
+        || !MainRevolverAnimationClass || !VRAnimationRevolverMesh) return false;
+    UAnimMontage* Montage = bPuttingBack ? WinEndMontage.Get() : WinAimMontage.Get();
+    if (!Montage) return false;
+    if (bVRMainGrabPresentationActive && bVRMainPutBackPresentation == bPuttingBack) return true;
+    RestoreVRMainGrabPresentation();
+
+    // 기존 폴드용 설정은 보관하고 메인 총 연출 동안에만 메시/AnimBP를 적용합니다.
+    USkeletalMeshComponent* AnimationMeshes[] = {MetaHumanBodyAnimation, MetaHumanTorsoAnimation, MetaHumanFaceAnimation};
+    USkeletalMesh* MeshAssets[] = {MainRevolverAnimationBody.Get(), MainRevolverAnimationTorso.Get(), MainRevolverAnimationFace.Get()};
+    for (int32 Index = 0; Index < 3; ++Index)
+    {
+        USkeletalMeshComponent* Component = AnimationMeshes[Index];
+        if (!Component) continue;
+        FVRAnimationAssetState& State = VRAnimationAssetStates.AddDefaulted_GetRef();
+        State.Component = Component;
+        State.Mesh = Component->GetSkeletalMeshAsset();
+        State.AnimClass = Component->GetAnimClass();
+        Component->SetSkeletalMeshAsset(MeshAssets[Index]);
+    }
+    MetaHumanBodyAnimation->SetAnimInstanceClass(MainRevolverAnimationClass);
+    UAnimInstance* Anim = MetaHumanBodyAnimation->GetAnimInstance();
+    if (!Anim) { RestoreVRMainGrabPresentation(); return false; }
+
+    TArray<UPrimitiveComponent*> Components;
+    GetComponents<UPrimitiveComponent>(Components, true);
+    if (Revolver->WeaponMesh) Components.AddUnique(Revolver->WeaponMesh);
+    for (UPrimitiveComponent* Component : Components)
+    {
+        if (!IsValid(Component) ||
+            (!Component->IsA<USkeletalMeshComponent>() && !Component->IsA<UGroomComponent>())) continue;
+        FVRGrabMeshState& State = VRGrabMeshStates.AddDefaulted_GetRef();
+        State.Component = Component;
+        State.bVisible = Component->GetVisibleFlag();
+        State.bHiddenInGame = Component->bHiddenInGame;
+        State.bOwnerNoSee = Component->bOwnerNoSee;
+        State.bOnlyOwnerSee = Component->bOnlyOwnerSee;
+        const bool bAnimationMesh = Component == MetaHumanBodyAnimation
+            || Component == MetaHumanTorsoAnimation || Component == MetaHumanFaceAnimation;
+        // 집기 Notify 전까지는 책상 위 총을 그대로 표시합니다.
+        if (Component != Revolver->WeaponMesh || bPuttingBack)
+            Component->SetVisibility(bAnimationMesh, false);
+        if (bAnimationMesh)
+        {
+            Component->SetHiddenInGame(false, false);
+            Component->SetOnlyOwnerSee(false);
+            Component->SetOwnerNoSee(Component == MetaHumanFaceAnimation);
+        }
+    }
+    VRAnimationRevolverMesh->SetSkeletalMeshAsset(Revolver->WeaponMesh->GetSkeletalMeshAsset());
+    const FName Socket = MetaHumanBodyAnimation->DoesSocketExist(FName("Revolver"))
+        ? FName("Revolver") : FName("hand_r");
+    VRAnimationRevolverMesh->AttachToComponent(MetaHumanBodyAnimation,
+        FAttachmentTransformRules::SnapToTargetNotIncludingScale, Socket);
+    VRAnimationRevolverMesh->SetHiddenInGame(false);
+    VRAnimationRevolverMesh->SetVisibility(bPuttingBack);
+    bVRMainGrabPresentationActive = true;
+    bVRMainPutBackPresentation = bPuttingBack;
+    if (Anim->Montage_Play(Montage) <= 0.0f)
+    {
+        RestoreVRMainGrabPresentation();
+        return false;
+    }
+    FOnMontageEnded Delegate;
+    Delegate.BindUObject(this, &ALobbyVRCharacter::OnVRMainRevolverAnimationEnded);
+    Anim->Montage_SetEndDelegate(Delegate, Montage);
+
+    if (IsLocallyControlled() && CameraComponent && MetaHumanBodyAnimation->DoesSocketExist(FName("head")))
+    {
+        VRMainAnimationCameraState.Parent = CameraComponent->GetAttachParent();
+        VRMainAnimationCameraState.Socket = CameraComponent->GetAttachSocketName();
+        VRMainAnimationCameraState.RelativeTransform = CameraComponent->GetRelativeTransform();
+        VRMainAnimationCameraState.bLockToHmd = CameraComponent->bLockToHmd;
+        VRMainAnimationCameraState.bUsePawnControlRotation = CameraComponent->bUsePawnControlRotation;
+        VRMainAnimationCameraState.bActive = true;
+
+        // BP에는 카메라가 둘 있으므로 실제 시점도 지정 카메라 하나만 사용하게 합니다.
+        TInlineComponentArray<UCameraComponent*> Cameras(this);
+        for (UCameraComponent* Camera : Cameras)
+        {
+            VRMainAnimationCameraState.CameraActivationStates.Emplace(Camera, Camera->IsActive());
+            Camera->SetActive(Camera == CameraComponent);
+        }
+
+        // PC와 같은 눈 위치로 머리 애니메이션을 따라가며, 종료 시 HMD 추적을 복구합니다.
+        CameraComponent->bLockToHmd = false;
+        CameraComponent->bUsePawnControlRotation = false;
+        CameraComponent->AttachToComponent(MetaHumanBodyAnimation,
+            FAttachmentTransformRules::SnapToTargetNotIncludingScale, FName("head"));
+        CameraComponent->SetRelativeLocationAndRotation(
+            FVector(-2.8f, 8.5f, 0.0f), FRotator(0.0f, 90.0f, -90.0f));
+    }
+    return true;
+}
+
+void ALobbyVRCharacter::RestoreVRMainGrabPresentation()
+{
+    // 메시를 원래 에셋으로 되돌리기 전에 카메라를 원래 부모로 옮깁니다.
+    if (VRMainAnimationCameraState.bActive && CameraComponent)
+    {
+        if (USceneComponent* Parent = VRMainAnimationCameraState.Parent.Get())
+            CameraComponent->AttachToComponent(Parent, FAttachmentTransformRules::KeepRelativeTransform,
+                VRMainAnimationCameraState.Socket);
+        else
+            CameraComponent->DetachFromComponent(FDetachmentTransformRules::KeepRelativeTransform);
+        CameraComponent->SetRelativeTransform(VRMainAnimationCameraState.RelativeTransform);
+        CameraComponent->bLockToHmd = VRMainAnimationCameraState.bLockToHmd;
+        CameraComponent->bUsePawnControlRotation = VRMainAnimationCameraState.bUsePawnControlRotation;
+    }
+    for (const auto& State : VRMainAnimationCameraState.CameraActivationStates)
+        if (UCameraComponent* Camera = State.Key.Get()) Camera->SetActive(State.Value);
+    VRMainAnimationCameraState = FVRMainAnimationCameraState();
+    bVRMainGrabPresentationActive = false;
+    bVRMainPutBackPresentation = false;
+    if (MetaHumanBodyAnimation)
+        if (UAnimInstance* Anim = MetaHumanBodyAnimation->GetAnimInstance())
+        {
+            if (WinAimMontage) Anim->Montage_Stop(0.0f, WinAimMontage);
+            if (WinEndMontage) Anim->Montage_Stop(0.0f, WinEndMontage);
+        }
+    for (const FVRGrabMeshState& State : VRGrabMeshStates)
+        if (UPrimitiveComponent* Component = State.Component.Get())
+        {
+            Component->SetVisibility(State.bVisible, false);
+            Component->SetHiddenInGame(State.bHiddenInGame, false);
+            Component->SetOwnerNoSee(State.bOwnerNoSee);
+            Component->SetOnlyOwnerSee(State.bOnlyOwnerSee);
+        }
+    VRGrabMeshStates.Reset();
+    for (const FVRAnimationAssetState& State : VRAnimationAssetStates)
+        if (USkeletalMeshComponent* Component = State.Component.Get())
+        {
+            Component->SetSkeletalMeshAsset(State.Mesh);
+            Component->SetAnimInstanceClass(State.AnimClass);
+        }
+    VRAnimationAssetStates.Reset();
+}
+
+void ALobbyVRCharacter::AttachRevolverToSocket()
+{
+    if (bVRMainGrabPresentationActive)
+    {
+        if (ActiveRevolver && ActiveRevolver->WeaponMesh)
+            ActiveRevolver->WeaponMesh->SetVisibility(false);
+        VRAnimationRevolverMesh->SetVisibility(true);
+        return;
+    }
+    Super::AttachRevolverToSocket();
+}
+
+void ALobbyVRCharacter::ReturnRevolverToDesk()
+{
+    if (bVRMainGrabPresentationActive)
+    {
+        VRAnimationRevolverMesh->SetVisibility(false);
+        return;
+    }
+    Super::ReturnRevolverToDesk();
+}
+
+void ALobbyVRCharacter::OnVRMainRevolverAnimationEnded(UAnimMontage* Montage, bool bInterrupted)
+{
+    if (!bVRMainGrabPresentationActive) return;
+    const bool bPuttingBack = bVRMainPutBackPresentation;
+    if (Montage != (bPuttingBack ? WinEndMontage.Get() : WinAimMontage.Get())) return;
+    RestoreVRMainGrabPresentation();
+    if (bPuttingBack) OnPutBackGunMontageEnded(Montage, bInterrupted);
+    else
+    {
+        bMainRevolverGrabInProgress = false;
+        OnGrabGunMontageEnded(Montage, bInterrupted);
+    }
+}
+
+void ALobbyVRCharacter::PlayPutBackGunMontage(EGunHoldReason Reason)
+{
+    if (Reason != EGunHoldReason::Win || !PlayVRMainRevolverAnimation(ActiveRevolver.Get(), true))
+    {
+        Super::PlayPutBackGunMontage(Reason);
+        return;
+    }
+    // 기존 반환 처리와 같은 상태 갱신과 종료 콜백을 사용합니다.
+    bIsPuttingBackGun = true;
+    SetMainShotAimLineVisible(false);
+    FinishedReason = GunHoldReason;
+    GunHoldReason = EGunHoldReason::None;
+}
+
+void ALobbyVRCharacter::ReturnMainRevolverToTableImmediately()
+{
+    if (HasAuthority()) Multicast_ClearVRMainRevolver();
+    else RestoreVRMainGrabPresentation();
+    Super::ReturnMainRevolverToTableImmediately();
+}
+
+void ALobbyVRCharacter::EndPlay(const EEndPlayReason::Type EndPlayReason)
+{
+    RestoreVRMainGrabPresentation();
+    Super::EndPlay(EndPlayReason);
 }
 
 void ALobbyVRCharacter::AttachMainRevolverToRightGrip()
@@ -1077,8 +1321,6 @@ void ALobbyVRCharacter::AttachMainRevolverToRightGrip()
 			*GetNameSafe(ActiveRevolver));
 		return;
 	}
-
-	const bool bWasMainRevolverGrabbed = IsMainRevolverGrabbed();
 
 	ActiveRevolver->SetActorHiddenInGame(false);
 	ActiveRevolver->AttachToComponent(MotionControllerRightGrip, FAttachmentTransformRules::SnapToTargetNotIncludingScale);
@@ -1093,21 +1335,6 @@ void ALobbyVRCharacter::AttachMainRevolverToRightGrip()
 	bShowMainShotAimLine = true;
 	DrawMainShotAimLine();
 	ActiveRevolver->ForceNetUpdate();
-
-	if (HasAuthority() && ActiveRevolver->ActorHasTag(FName("MainRevolver")))
-	{
-		MarkMainRevolverGrabbed();
-
-#if WITH_SERVER_CODE
-		if (!bWasMainRevolverGrabbed)
-		{
-			if (AMainGameMode* GM = GetWorld() ? GetWorld()->GetAuthGameMode<AMainGameMode>() : nullptr)
-			{
-				GM->HandleMainRevolverGrabbed(this);
-			}
-		}
-#endif
-	}
 
 	UE_LOG(LogTemp, Warning,
 		TEXT("[VR Gun] MainRevolver attached to right grip. Char=%s Revolver=%s GripLocation=%s RevolverLocation=%s Authority=%s"),
