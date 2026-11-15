@@ -22,6 +22,7 @@ class INDIAN_BAB_API ALobbyCharacter : public ACharacter
 protected:
 	// 폴드와 PC 승리 시 기존 총 잡기 몽타주 처리를 공유합니다.
 	virtual void PlayGrabGunMontage(EGunHoldReason Reason);
+	virtual void PlayPutBackGunMontage(EGunHoldReason Reason);
 
 	// 총 반환과 PC 격발 종료에서 손의 총 메시 정리를 공유합니다.
 	void ClearHeldRevolverMeshes();
@@ -203,10 +204,10 @@ public:
 	TObjectPtr<USkeletalMeshComponent> TP_RevolverMesh;
 
 	// AnimNotify_GrabRevolver 에서 호출 - 책상 리볼버를 숨기고 FP/TP 메시를 소켓에 부착
-	void AttachRevolverToSocket();
+	virtual void AttachRevolverToSocket();
 
 	// AnimNotify_ReturnRevolverToDesk에서 호출 - 손 리볼버 메시를 숨기고 책상 리볼버를 다시 보이게 함
-	void ReturnRevolverToDesk();
+	virtual void ReturnRevolverToDesk();
 
 	// ★ 추가: 현재 캐릭터가 앉아있는지 여부 (동기화 됨)
 	UPROPERTY(ReplicatedUsing = OnRep_IsSitting, BlueprintReadOnly, Category = "State")
