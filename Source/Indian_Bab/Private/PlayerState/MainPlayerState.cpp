@@ -133,7 +133,7 @@ void AMainPlayerState::SetAliveState(bool bNewAlive)
 // 서브 리볼버 당김횟부 변화(+1)
 bool AMainPlayerState::ChangeSubRevolver()
 {
-    isFold = 1;
+    SetFoldState(true);
     if(BulletArray[TotalTriggerCount])
     {
         SetAliveState(false);
@@ -143,6 +143,15 @@ bool AMainPlayerState::ChangeSubRevolver()
     OnRep_TotalTriggerCount();
 
     return isAlive;
+}
+
+void AMainPlayerState::SetFoldState(bool bNewFold)
+{
+    if (!HasAuthority() || isFold == bNewFold) return;
+
+    isFold = bNewFold;
+    OnRep_isFold();
+    ForceNetUpdate();
 }
 
 void AMainPlayerState::OnRep_TotalTriggerCount()
@@ -161,8 +170,8 @@ void AMainPlayerState::OnRep_isAlive()
 
 void AMainPlayerState::OnRep_isFold()
 {
-    if(isFold == 1)
-        UE_LOG(LogTemp, Warning, TEXT("[PS_%d] : Fold!"), GetPlayerId());
+    if(isFold == 1) UE_LOG(LogTemp, Warning, TEXT("[PS_%d] : Fold!"), GetPlayerId());
+    OnCardChanged.Broadcast();
 }
 
 void AMainPlayerState::OnRep_SteamNickname()
