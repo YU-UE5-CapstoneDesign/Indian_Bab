@@ -85,6 +85,8 @@ public:
 	// 리볼버 당김 횟수 변경
 	bool ChangeSubRevolver();
 
+	void SetFoldState(bool bNewFold);
+
 protected:
 	// On_Rep : 오른쪽에 적힌 함수 변화했을 때 실행하는 함수
 	UFUNCTION()

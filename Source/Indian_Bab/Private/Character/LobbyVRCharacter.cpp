@@ -32,6 +32,7 @@
 #include "Net/UnrealNetwork.h"
 #include "EnhancedInputComponent.h"
 #include "GameInstanceSubsystem/IndianBabGameInstance.h"
+#include "PlayerState/MainPlayerState.h"
 
 namespace
 {
@@ -290,6 +291,8 @@ void ALobbyVRCharacter::Client_HideMainGameWidget_Implementation()
 
 void ALobbyVRCharacter::Client_ShowResultWidget_Implementation(const FString& WinnerName, int32 WinnerPlayerId)
 {
+	if (AMainGamePlayerController* PC = Cast<AMainGamePlayerController>(GetController()))
+		PC->DismissEliminationNoticeForResults();
 	ShowResultWidget(WinnerName, WinnerPlayerId);
 
 	// VR 클라이언트에서도 최종 결과 BGM 재생
@@ -1031,6 +1034,7 @@ void ALobbyVRCharacter::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& Ou
 
 void ALobbyVRCharacter::GrabGun()
 {
+	if (const AMainPlayerState* PS = GetPlayerState<AMainPlayerState>(); PS && !PS->isAlive) return;
 	if (MotionControllerRightGrip && GetWorld())
 	{
 		const FVector Start = MotionControllerRightGrip->GetComponentLocation();
@@ -1087,6 +1091,7 @@ void ALobbyVRCharacter::GrabGun()
 
 void ALobbyVRCharacter::Server_GrabMainRevolver_Implementation()
 {
+	if (const AMainPlayerState* PS = GetPlayerState<AMainPlayerState>(); PS && !PS->isAlive) return;
 	if (bMainRevolverGrabInProgress || bMainRevolverGrabbed || bIsPuttingBackGun) return;
 	if (!ActiveRevolver || !ActiveRevolver->ActorHasTag(FName("MainRevolver")) || !GetWorld())
 	{

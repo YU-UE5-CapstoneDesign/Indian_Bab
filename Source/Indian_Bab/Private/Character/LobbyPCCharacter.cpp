@@ -15,6 +15,7 @@
 #include "PCCrosshairWidget.h"
 #include "UObject/ConstructorHelpers.h"
 #include "Components/PrimitiveComponent.h"
+#include "PlayerState/MainPlayerState.h"
 
 void ALobbyPCCharacter::Tick(float DeltaTime) {
 	Super::Tick(DeltaTime);
@@ -114,6 +115,7 @@ void ALobbyPCCharacter::Client_InitPCSeated_Implementation(FVector Location, FRo
 
 void ALobbyPCCharacter::Server_GrabMainRevolver_Implementation()
 {
+	if (const AMainPlayerState* PS = GetPlayerState<AMainPlayerState>(); PS && !PS->isAlive) return;
 	if (bMainRevolverGrabInProgress || bMainRevolverGrabbed) return;
 	if (!ActiveRevolver || !ActiveRevolver->ActorHasTag(FName("MainRevolver")) || !GetWorld()) return;
 	FVector Start, End;

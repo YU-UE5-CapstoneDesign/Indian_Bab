@@ -4,6 +4,7 @@
 #include "GameFramework/PlayerController.h"
 #include "InputActionValue.h" 
 #include "Game/CardRevealTypes.h"
+#include "TimerManager.h"
 #include "MainGamePlayerController.generated.h"
 
 class UMainGameWidget;
@@ -22,6 +23,7 @@ UCLASS()
 class INDIAN_BAB_API AMainGamePlayerController : public APlayerController
 {
 	GENERATED_BODY()
+	friend class FEliminationNoticeTest;
 	
 public:
     AMainGamePlayerController();
@@ -49,7 +51,21 @@ public:
     UFUNCTION(Client, Reliable)
     void Client_EndFoldAudio(bool bSurvived);
 
+    void RefreshEliminationNotice();
+    void DismissEliminationNoticeForResults();
+    UFUNCTION(BlueprintCallable, Category = "UI|Elimination")
+    void EnterEliminationSpectatorMode();
+
 private:
+	void UpdateEliminationPresentation();
+	void ClearEliminationNotice();
+	bool CanPerformGameActions() const;
+	bool bEliminationNoticeStarted = false;
+	bool bShowingSpectatorNotice = false;
+	bool bFinalResultsShown = false;
+	UPROPERTY(Transient)
+	TObjectPtr<UMainGameWidget> EliminationGameWidget;
+
 	void ShowOptionsMenu();
 	void FocusPCModal(UUserWidget* Widget);
     void DismissExitConfirmation();
@@ -232,6 +248,7 @@ private:
 
     // 플레이어 스테이트 변화 발생 시 실행(위젯에서 플레이어 스테이트 등록 실패 시 재등록)
     virtual void OnRep_PlayerState() override;
+    virtual void OnRep_Pawn() override;
 
     // 감도
     float LookSensitivity = 1.0f;

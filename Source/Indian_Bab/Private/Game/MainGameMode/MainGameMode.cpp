@@ -1016,7 +1016,7 @@ void AMainGameMode::ResetFoldState()
 		AMainPlayerState* MPS = Cast<AMainPlayerState>(PS);
 		if (!MPS) continue;
 
-		MPS->isFold = false;
+		MPS->SetFoldState(false);
 		MPS->ResetAddToken();
 	}
 }

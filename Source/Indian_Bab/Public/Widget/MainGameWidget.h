@@ -14,6 +14,7 @@ class UBetProgressWidget;
 class UTurnInfoWidget;
 class AMainGamePlayerController;
 class AMainPlayerState;
+class UEliminationNoticeWidget;
 
 UCLASS()
 class INDIAN_BAB_API UMainGameWidget : public UUserWidget
@@ -25,6 +26,9 @@ protected:
 	virtual void NativeDestruct() override;
 
 private:
+    UPROPERTY(meta = (BindWidgetOptional))
+    TObjectPtr<UEliminationNoticeWidget> EliminationNotice;
+
     UPROPERTY(meta = (BindWidgetOptional))
     TObjectPtr<UButton> Button_Ready;
 
@@ -122,6 +126,7 @@ public:
 	// 플레이어 컨트롤러 및 플레이어 스테이트 등록
 	void InitWidget();
 	void SetPCReadyMode(bool bWaitingForReady);
+	void SetEliminationNotice(bool bVisible, bool bSpectating);
 
 	int32 GetBetNum() const;
 

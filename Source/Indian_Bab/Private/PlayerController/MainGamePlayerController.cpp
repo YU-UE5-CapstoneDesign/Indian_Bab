@@ -93,6 +93,7 @@ void AMainGamePlayerController::BeginPlay()
 	// bShowMouseCursor = false;
 
     TrySendSteamNickname();
+	RefreshEliminationNotice();
 
     // 연결성 구독 + 폴링 시작 — 인게임에서도 NLM 폴링으로 로컬 끊김을 빠르게 감지.
     // NLA 사각지대(NLM online 인데 서버 unreachable) 는 NetDriver OnNetworkFailure → ForceTriggerLost 가 백업.
@@ -112,6 +113,7 @@ void AMainGamePlayerController::BeginPlay()
 
 void AMainGamePlayerController::EndPlay(const EEndPlayReason::Type EndPlayReason)
 {
+	ClearEliminationNotice();
     Client_EndCardReveal_Implementation();
     DismissExitConfirmation();
 	if (OptionMenuInstance)
@@ -627,23 +629,27 @@ void AMainGamePlayerController::EnterCameraMode()
 
 void AMainGamePlayerController::RequestRaise(int32 RaiseCount)
 {
+    if (!CanPerformGameActions()) return;
     Server_RequestBetAction(EBetAction::Raise, RaiseCount);
 }
 
 
 void AMainGamePlayerController::RequestCheckCall()
 {
+    if (!CanPerformGameActions()) return;
     Server_RequestBetAction(EBetAction::CheckCall, 0);
 }
 
 
 void AMainGamePlayerController::RequestFold()
 {
+    if (!CanPerformGameActions()) return;
     Server_RequestBetAction(EBetAction::Fold, 0);
 }
 
 void AMainGamePlayerController::RequestSetAddTokenSelected(bool bSelected)
 {
+    if (!CanPerformGameActions()) return;
     Server_SetAddTokenSelected(bSelected);
 }
 
@@ -757,6 +763,7 @@ void AMainGamePlayerController::OnLobbyLook(const FInputActionValue& Value)
 void AMainGamePlayerController::OnRep_PlayerState()
 {
     Super::OnRep_PlayerState();
+	RefreshEliminationNotice();
 
     if (MainGameWidgetInstance)
     {
@@ -903,7 +910,7 @@ void AMainGamePlayerController::Client_SetPCMainShotMode_Implementation(bool bEn
 // PC 메인 리볼버 페이즈에서 좌클릭 처리(총 획득, 격발).
 void AMainGamePlayerController::OnPCMainShotPressed()
 {
-    if (!CanProcessPCInput() || !bPCMainShotMode) return;
+    if (!CanProcessPCInput() || !CanPerformGameActions() || !bPCMainShotMode) return;
 
     ALobbyPCCharacter* PCCharacter = Cast<ALobbyPCCharacter>(GetPawn());
     if (!PCCharacter) return;
@@ -923,14 +930,14 @@ void AMainGamePlayerController::OnPCMainShotPressed()
 void AMainGamePlayerController::OnFire(const FInputActionValue& Value)
 {
     // PC는 좌클릭 경로만 사용하여 같은 입력에서 두 번 격발하는 것을 막습니다.
-    if (Cast<ALobbyVRCharacter>(GetPawn())) Server_RequestMainRevolverShot();
+    if (CanPerformGameActions() && Cast<ALobbyVRCharacter>(GetPawn())) Server_RequestMainRevolverShot();
 }
 
 void AMainGamePlayerController::OnRightTriggerClickStarted(const FInputActionValue& Value)
 {
 	if (ALobbyVRCharacter* VRCharacter = Cast<ALobbyVRCharacter>(GetPawn()))
 	{
-        if (VRCharacter->GunHoldReason == EGunHoldReason::Win
+        if (CanPerformGameActions() && VRCharacter->GunHoldReason == EGunHoldReason::Win
             && VRCharacter->ActiveRevolver
             && VRCharacter->ActiveRevolver->ActorHasTag(FName("MainRevolver")))
         {
@@ -1061,6 +1068,7 @@ bool AMainGamePlayerController::CloseVRMenu()
 void AMainGamePlayerController::Client_ShowPCResultWidget_Implementation(const FString& WinnerName, int32 WinnerPlayerId)
 {
     if (!IsLocalController() || Cast<ALobbyVRCharacter>(GetPawn())) return;
+    DismissEliminationNoticeForResults();
 
     // 최종 게임 결과 시 승리 BGM 재생
     if (UIndianBabGameInstance* GI =

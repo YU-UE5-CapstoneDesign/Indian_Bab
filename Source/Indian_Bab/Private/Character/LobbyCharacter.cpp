@@ -195,7 +195,7 @@ void ALobbyCharacter::BindPlayerStateDelegates()
 	UpdateNameWidget();
 	UpdateCardWidget();
 	UpdateCardMesh();
-	UpdatePlayerNameColor();
+	OnAliveStateChanged(PS->isAlive);
 
 	if (IsValid(DeskRevolver))
 	{
@@ -264,6 +264,12 @@ void ALobbyCharacter::UpdateCardWidget()
 		return;
 	}
 
+	if (PS->isFold)
+	{
+		Widget->SetCardText(TEXT("Fold"));
+		return;
+	}
+
 	const FCardData Card = PS->GetMyCard();
 	if (Card.Value == 0)
 	{
@@ -281,10 +287,11 @@ void ALobbyCharacter::UpdateCardMesh()
 	AMainPlayerState* PS = GetPlayerState<AMainPlayerState>();
 	if (!PS) return;
 
-	if (IsLocallyControlled())
+	if (IsLocallyControlled() || PS->isFold)
 	{
 		CardDisplayMesh->SetVisibility(false);
-		if (AddTokenDisplayMesh) AddTokenDisplayMesh->SetVisibility(false);
+		if (AddTokenDisplayMesh)
+			AddTokenDisplayMesh->SetVisibility(false);
 		return;
 	}
 
@@ -372,6 +379,8 @@ void ALobbyCharacter::UpdatePlayerNameColor()
 void ALobbyCharacter::OnAliveStateChanged(bool bIsAlive)
 {
 	UpdatePlayerNameColor();
+	if (AMainGamePlayerController* PC = Cast<AMainGamePlayerController>(GetController()))
+		PC->RefreshEliminationNotice();
 }
 
 // Called every frame
