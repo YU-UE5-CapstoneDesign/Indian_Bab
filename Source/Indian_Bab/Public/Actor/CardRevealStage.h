@@ -32,12 +32,12 @@ private:
 	{
 		USceneComponent* Pivot = nullptr;
 		UStaticMeshComponent* Front = nullptr;
-		UStaticMeshComponent* AfterTokenFront = nullptr;
 		UStaticMeshComponent* Back = nullptr;
 		UStaticMeshComponent* Token = nullptr;
 		UTextRenderComponent* NameText = nullptr;
 		UTextRenderComponent* WinnerText = nullptr;
 		UTextRenderComponent* ValueText = nullptr;
+		FString AfterTokenLabel;
 		bool bHasToken = false;
 		bool bDropSoundPlayed = false;
 	};

@@ -125,13 +125,6 @@ void ACardRevealStage::StartRevealAtView(FVector ViewLocation, FRotator ViewRota
 		Visual.Front->SetRelativeScale3D(FVector(ReferenceCardScale));
 		Visual.Front->SetVisibility(false);
 
-		Visual.AfterTokenFront = CreateMesh();
-		Visual.AfterTokenFront->SetStaticMesh(Entry.Card.AfterTokenCardMesh.LoadSynchronous());
-		Visual.AfterTokenFront->SetRelativeLocation(FVector(0.0f, 0.0f, 1.0f));
-		Visual.AfterTokenFront->SetRelativeRotation(FRotator(180.0f, 0.0f, 0.0f));
-		Visual.AfterTokenFront->SetRelativeScale3D(FVector(ReferenceCardScale));
-		Visual.AfterTokenFront->SetVisibility(false);
-
 		Visual.Back = CreateMesh();
 		Visual.Back->SetStaticMesh(PlaneMesh);
 		Visual.Back->SetMaterial(0, BackMaterial);
@@ -185,6 +178,10 @@ void ACardRevealStage::StartRevealAtView(FVector ViewLocation, FRotator ViewRota
 		Visual.ValueText->SetRelativeRotation(FRotator(90.0f, 90.0f, 0.0f));
 		Visual.ValueText->RegisterComponent();
 		Visual.ValueText->SetVisibility(false);
+
+		FCardData ResultCard = Entry.Card;
+		ResultCard.Value = Entry.ComparisonValue;
+		Visual.AfterTokenLabel = Entry.ComparisonValue == 0 ? TEXT("0") : ResultCard.GetDisplayRank();
 	}
 	Tick(0.0f);
 }
@@ -223,6 +220,7 @@ void ACardRevealStage::Tick(float DeltaSeconds)
 		if (Visual.bHasToken && TokenProgress >= 1.0f && !Visual.bDropSoundPlayed)
 		{
 			Visual.bDropSoundPlayed = true;
+			Visual.ValueText->SetText(FText::FromString(Visual.AfterTokenLabel));
 			if (CoinDropSound)
 			{
 				UGameplayStatics::PlaySoundAtLocation(this, CoinDropSound, Visual.Token->GetComponentLocation(), CoinDropVolume);
@@ -230,14 +228,12 @@ void ACardRevealStage::Tick(float DeltaSeconds)
 		}
 		if (Visual.bDropSoundPlayed) 
 		{
-			Visual.Front->SetVisibility(false);
-			Visual.AfterTokenFront->SetVisibility(true);
 			constexpr float ReferenceCardScale = 0.038f;
 
 			const float SwapTime = TokenStart + FMath::Max(TokenDropDuration, 0.01f);
 			const float PopTime = FMath::Clamp((ElapsedTime - SwapTime) / PopDuration, 0.0f, 1.0f);
 			const float Bump = FMath::Sin(PopTime * PI);
-			Visual.AfterTokenFront->SetRelativeScale3D(FVector(ReferenceCardScale * FMath::Lerp(1.0f, PopScale, Bump)));
+			Visual.Front->SetRelativeScale3D(FVector(ReferenceCardScale * FMath::Lerp(1.0f, PopScale, Bump)));
 		}
 
 	}
