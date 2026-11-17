@@ -195,7 +195,7 @@ void ALobbyCharacter::BindPlayerStateDelegates()
 	UpdateNameWidget();
 	UpdateCardWidget();
 	UpdateCardMesh();
-	UpdatePlayerNameColor();
+	OnAliveStateChanged(PS->isAlive);
 
 	if (IsValid(DeskRevolver))
 	{
@@ -372,6 +372,8 @@ void ALobbyCharacter::UpdatePlayerNameColor()
 void ALobbyCharacter::OnAliveStateChanged(bool bIsAlive)
 {
 	UpdatePlayerNameColor();
+	if (AMainGamePlayerController* PC = Cast<AMainGamePlayerController>(GetController()))
+		PC->RefreshEliminationNotice();
 }
 
 // Called every frame

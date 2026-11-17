@@ -127,6 +127,7 @@ void AMainPlayerState::SetAliveState(bool bNewAlive)
 
     isAlive = bNewAlive;
     OnRep_isAlive();
+    ForceNetUpdate();
 }
 
 // 서브 리볼버 당김횟부 변화(+1)

@@ -8,8 +8,17 @@
 #include "Components/CheckBox.h"
 #include "Widget/BetProgressWidget.h"
 #include "Widget/TurnInfoWidget.h"
+#include "Widget/EliminationNoticeWidget.h"
 #include "Game/MainGameState.h"
 #include "PlayerController/MainGamePlayerController.h"
+
+void UMainGameWidget::SetEliminationNotice(bool bVisible, bool bSpectating)
+{
+    if (!EliminationNotice) return;
+    EliminationNotice->SetNotice(bSpectating);
+    EliminationNotice->SetVisibility(!bVisible ? ESlateVisibility::Collapsed
+        : bSpectating ? ESlateVisibility::HitTestInvisible : ESlateVisibility::SelfHitTestInvisible);
+}
 
 void UMainGameWidget::UpdateCenterBetLog(const FString& Message)
 {
@@ -113,6 +122,7 @@ void UMainGameWidget::OnReadyClicked()
 void UMainGameWidget::NativeConstruct() 
 {
 	Super::NativeConstruct();
+    SetEliminationNotice(false, false);
 
     if (Button_Ready)
     {
@@ -160,6 +170,7 @@ void UMainGameWidget::NativeConstruct()
     }
     RefreshBettingButtons();
     RefreshAddTokenUI();
+	if (MainGamePC) MainGamePC->RefreshEliminationNotice();
 
 }
 
@@ -293,6 +304,7 @@ void UMainGameWidget::InitWidget()
 
     UpdateSubRevolverCount(MainPS->TotalTriggerCount);
     RefreshAddTokenUI();
+    MainGamePC->RefreshEliminationNotice();
 }
 
 int32 UMainGameWidget::GetBetNum() const
@@ -302,6 +314,8 @@ int32 UMainGameWidget::GetBetNum() const
 
 bool UMainGameWidget::HandleVRClickAtWidgetLocation(const FVector2D& WidgetLocalHitLocation)
 {
+    if (EliminationNotice && EliminationNotice->HandleSpectateClickAtAbsoluteLocation(
+        GetCachedGeometry().LocalToAbsolute(WidgetLocalHitLocation))) return true;
     RefreshBettingButtons();
 
 	// 덧셈 토큰은 현재 턴과 무관하게 최종 공개 전까지 바꿀 수 있습니다.
