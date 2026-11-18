@@ -199,11 +199,31 @@ public:
 	bool bLogVRPointerHits = false;
 
 
-	UPROPERTY(ReplicatedUsing=OnRep_ArmTransforms, BlueprintReadOnly, Category = "MotionController")
+	// 화면에 쓰는 손 위치. 조종하는 클라이언트는 컨트롤러에서 직접 읽고, 다른 클라이언트는 Net*Arm을 따라 보간합니다.
+	UPROPERTY(BlueprintReadOnly, Category = "MotionController")
 	FTransform LeftArm;
 
-	UPROPERTY(ReplicatedUsing=OnRep_ArmTransforms, BlueprintReadOnly, Category = "MotionController")
+	UPROPERTY(BlueprintReadOnly, Category = "MotionController")
 	FTransform RightArm;
+
+	// 서버가 복제하는 손 위치 목표값. 서버 틱마다 한 번씩만 오므로 그대로 쓰면 끊겨 보입니다.
+	UPROPERTY(ReplicatedUsing=OnRep_ArmTransforms)
+	FTransform NetLeftArm;
+
+	UPROPERTY(ReplicatedUsing=OnRep_ArmTransforms)
+	FTransform NetRightArm;
+
+	// 다른 플레이어의 손이 목표값을 따라가는 속도. 클수록 빠르게 따라가고 덜 부드럽습니다.
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Network", meta = (ClampMin = "1.0"))
+	float RemoteArmInterpSpeed = 20.0f;
+
+	// 목표와 이 거리 이상 벌어지면 따라가지 않고 바로 맞춥니다.
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Network", meta = (ClampMin = "0.0"))
+	float RemoteArmSnapDistance = 100.0f;
+
+	bool bHasNetArms = false;
+
+	void SmoothReplicatedArms(float DeltaTime);
 
 	// 서버 피격 판정에 사용할 오른손 파란선의 월드 좌표입니다.
 	FTransform RightAimTransform = FTransform::Identity;

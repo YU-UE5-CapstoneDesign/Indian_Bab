@@ -205,6 +205,7 @@ void ALobbyVRCharacter::Tick(float DeltaTime)
 	Super::Tick(DeltaTime);
 	UpdateVRPointers();
 	UpdateArmPosition();
+	SmoothReplicatedArms(DeltaTime);
 }
 
 void ALobbyVRCharacter::InitSeatedAtSeat(ASeatActor* TargetSeat)
@@ -403,6 +404,8 @@ void ALobbyVRCharacter::Server_UpdateArm_Implementation(const FTransform& NewLef
 {
 	LeftArm = NewLeftArm;
 	RightArm = NewRightArm;
+	NetLeftArm = NewLeftArm;
+	NetRightArm = NewRightArm;
 	RightAimTransform = NewRightAim;
 	bHasRightAimTransform = !NewRightAim.ContainsNaN();
 	ApplyReplicatedArmTransforms();
@@ -410,6 +413,41 @@ void ALobbyVRCharacter::Server_UpdateArm_Implementation(const FTransform& NewLef
 
 void ALobbyVRCharacter::OnRep_ArmTransforms()
 {
+	// 첫 값만 바로 맞추고, 이후에는 Tick의 보간이 목표값을 따라갑니다.
+	if (!bHasNetArms)
+	{
+		bHasNetArms = true;
+		LeftArm = NetLeftArm;
+		RightArm = NetRightArm;
+		ApplyReplicatedArmTransforms();
+	}
+}
+
+void ALobbyVRCharacter::SmoothReplicatedArms(float DeltaTime)
+{
+	if (GetLocalRole() != ROLE_SimulatedProxy || !bHasNetArms)
+	{
+		return;
+	}
+
+	auto Smooth = [this, DeltaTime](FTransform& Current, const FTransform& Target)
+	{
+		if (Target.ContainsNaN())
+		{
+			return;
+		}
+		if (FVector::DistSquared(Current.GetLocation(), Target.GetLocation()) > FMath::Square(RemoteArmSnapDistance))
+		{
+			Current = Target;
+			return;
+		}
+		Current.SetLocation(FMath::VInterpTo(Current.GetLocation(), Target.GetLocation(), DeltaTime, RemoteArmInterpSpeed));
+		Current.SetRotation(FMath::QInterpTo(Current.GetRotation(), Target.GetRotation(), DeltaTime, RemoteArmInterpSpeed));
+		Current.SetScale3D(Target.GetScale3D());
+	};
+
+	Smooth(LeftArm, NetLeftArm);
+	Smooth(RightArm, NetRightArm);
 	ApplyReplicatedArmTransforms();
 }
 
@@ -1033,8 +1071,8 @@ void ALobbyVRCharacter::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& Ou
 {
 	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
 
-	DOREPLIFETIME(ALobbyVRCharacter, LeftArm);
-	DOREPLIFETIME(ALobbyVRCharacter, RightArm);
+	DOREPLIFETIME_CONDITION(ALobbyVRCharacter, NetLeftArm, COND_SkipOwner);
+	DOREPLIFETIME_CONDITION(ALobbyVRCharacter, NetRightArm, COND_SkipOwner);
 }
 
 void ALobbyVRCharacter::GrabGun()

@@ -140,8 +140,22 @@ public:
 	UPROPERTY(Replicated, BlueprintReadOnly, Category = "Camera")
 	float ReplicatedAimPitch = 0.0f;
 
-	UPROPERTY(Replicated, BlueprintReadOnly, Category = "Camera")
-	FRotator ReplicatedAim;
+	// 화면에 쓰는 목 회전. 조종하는 클라이언트는 직접 계산하고, 다른 클라이언트는 NetAim을 따라 보간합니다.
+	UPROPERTY(BlueprintReadOnly, Category = "Camera")
+	FRotator ReplicatedAim = FRotator::ZeroRotator;
+
+	// 서버가 복제하는 목 회전 목표값. 서버 틱마다 한 번씩만 오므로 그대로 쓰면 끊겨 보입니다.
+	UPROPERTY(ReplicatedUsing = OnRep_NetAim)
+	FRotator NetAim = FRotator::ZeroRotator;
+
+	UFUNCTION()
+	void OnRep_NetAim();
+
+	// 다른 플레이어의 목 회전이 목표값을 따라가는 속도. 클수록 빠르게 따라가고 덜 부드럽습니다.
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Network", meta = (ClampMin = "1.0"))
+	float RemoteAimInterpSpeed = 20.0f;
+
+	bool bHasNetAim = false;
 
 	bool bMainRevolverGrabInProgress = false;
 
