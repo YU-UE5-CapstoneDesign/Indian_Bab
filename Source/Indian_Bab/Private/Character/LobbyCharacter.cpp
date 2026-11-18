@@ -388,9 +388,31 @@ void ALobbyCharacter::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
 
+	// 다른 플레이어의 목 회전은 복제 목표값을 매 프레임 따라가게 합니다.
+	if (GetLocalRole() == ROLE_SimulatedProxy)
+	{
+		if (bHasNetAim)
+		{
+			ReplicatedAim = FMath::RInterpTo(ReplicatedAim, NetAim, DeltaTime, RemoteAimInterpSpeed);
+		}
+	}
+	else if (HasAuthority() && IsLocallyControlled())
+	{
+		NetAim = ReplicatedAim;
+	}
+
 	UpdateAimFromView();
 
 	DrawMainShotAimLine();
+}
+
+void ALobbyCharacter::OnRep_NetAim()
+{
+	if (!bHasNetAim)
+	{
+		bHasNetAim = true;
+		ReplicatedAim = NetAim;
+	}
 }
 
 void ALobbyCharacter::UpdateAimFromView()
@@ -412,7 +434,7 @@ void ALobbyCharacter::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutL
 	DOREPLIFETIME(ALobbyCharacter, bIsSittingEnded);
 	DOREPLIFETIME(ALobbyCharacter, GunHoldReason);
 	DOREPLIFETIME(ALobbyCharacter, DeskRevolver);
-	DOREPLIFETIME(ALobbyCharacter, ReplicatedAim);
+	DOREPLIFETIME_CONDITION(ALobbyCharacter, NetAim, COND_SkipOwner);
 	DOREPLIFETIME(ALobbyCharacter, ActiveRevolver);
 }
 
@@ -784,7 +806,8 @@ void ALobbyCharacter::Client_PrepareSit_Implementation(FVector TargetLocation, F
 
 void ALobbyCharacter::Server_UpdateAim_Implementation(FRotator NewAim)
 {
-	ReplicatedAim = NewAim; // 서버가 값을 받아서 모든 클라이언트에게 자동 전파
+	ReplicatedAim = NewAim;
+	NetAim = NewAim; // 서버가 값을 받아서 다른 클라이언트에게 전파
 }
 
 void ALobbyCharacter::SetActiveRevolver(ARevolver* NewRevolver)
