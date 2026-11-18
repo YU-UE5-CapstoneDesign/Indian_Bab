@@ -176,9 +176,10 @@ public:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "VR|Seat")
 	bool bUseSeatedVROriginLocation = true;
 
-	// 캡슐 기준 상대 위치(앞, 오른쪽, 위). 앉은 자세의 머리 본 위치에 눈 높이를 더한 값입니다.
+	// 캡슐 기준 상대 위치(앞, 오른쪽, 위). Anim_Sit을 캐릭터 바디 메시로 평가했을 때 두 눈의 중점입니다.
+	// 스켈레톤 에셋 기준으로 재면 머리가 약 30cm 낮게 나오므로 반드시 메시 기준으로 잴 것.
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "VR|Seat", meta = (EditCondition = "bUseSeatedVROriginLocation"))
-	FVector SeatedVROriginLocation = FVector(10.0f, -10.0f, 28.0f);
+	FVector SeatedVROriginLocation = FVector(16.0f, -12.0f, 57.0f);
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "VR|Seat|Debug")
 	bool bShowSeatDebugCapsule = false;
