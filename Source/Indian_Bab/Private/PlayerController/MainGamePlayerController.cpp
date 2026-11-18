@@ -1217,6 +1217,7 @@ void AMainGamePlayerController::ApplyLocalPlayMode()
 	if (USettingSubsystem* Settings = GetGameInstance()->GetSubsystem<USettingSubsystem>())
 	{
 		LookSensitivity = Settings->GetMouseSensitivity();
+		Settings->RefreshDisplaySettingsForPlayMode();
 	}
     ApplyMainGameMappingContext();
     bRMBHeld = false;

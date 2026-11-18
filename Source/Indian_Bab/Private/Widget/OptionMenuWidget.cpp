@@ -3,6 +3,7 @@
 #include "Components/Button.h"
 #include "Components/Slider.h"
 #include "Components/ComboBoxString.h"
+#include "Components/CheckBox.h"
 #include "Kismet/GameplayStatics.h"
 #include "Widget/ConfirmChangesWidget.h"
 #include "Widget/MainMenuWidget.h"
@@ -51,6 +52,24 @@ void UOptionMenuWidget::NativeConstruct()
 	ComboBoxString_ScreenResolution->OnSelectionChanged.AddDynamic(this, &UOptionMenuWidget::OnScreenResolutionChanged);
 	if (ComboBoxString_RefreshRate) ComboBoxString_RefreshRate->OnSelectionChanged.AddDynamic(this, &UOptionMenuWidget::OnRefreshRateChanged);
 	ComboBoxString_WindowMode->OnSelectionChanged.AddDynamic(this, &UOptionMenuWidget::OnWindowModeChanged);
+	// Static quality choices are authored in the BP's DefaultOptions.
+	for (UComboBoxString* Combo : {ComboBoxString_ShadowQuality.Get(), ComboBoxString_TextureQuality.Get(),
+		ComboBoxString_EffectsQuality.Get(), ComboBoxString_PostProcessQuality.Get()})
+	{
+		if (!Combo) continue;
+		Combo->OnSelectionChanged.RemoveAll(this);
+		Combo->OnSelectionChanged.AddDynamic(this, &UOptionMenuWidget::OnGraphicsQualityChanged);
+	}
+	if (CheckBox_VSync)
+	{
+		CheckBox_VSync->OnCheckStateChanged.RemoveAll(this);
+		CheckBox_VSync->OnCheckStateChanged.AddDynamic(this, &UOptionMenuWidget::OnVSyncChanged);
+	}
+	if (Button_ResetGraphics)
+	{
+		Button_ResetGraphics->OnClicked.RemoveAll(this);
+		Button_ResetGraphics->OnClicked.AddDynamic(this, &UOptionMenuWidget::OnResetGraphicsClicked);
+	}
 	// 메인 버튼
 	Button_Apply->OnClicked.AddDynamic(this, &UOptionMenuWidget::OnApplyClicked);
 	Button_ResetAll->OnClicked.AddDynamic(this, &UOptionMenuWidget::OnResetAllClicked);
@@ -98,6 +117,11 @@ void UOptionMenuWidget::NativeDestruct()
 	if (ComboBoxString_ScreenResolution) ComboBoxString_ScreenResolution->OnSelectionChanged.RemoveAll(this);
 	if (ComboBoxString_RefreshRate)    ComboBoxString_RefreshRate->OnSelectionChanged.RemoveAll(this);
 	if (ComboBoxString_WindowMode)       ComboBoxString_WindowMode->OnSelectionChanged.RemoveAll(this);
+	for (UComboBoxString* Combo : {ComboBoxString_ShadowQuality.Get(), ComboBoxString_TextureQuality.Get(),
+		ComboBoxString_EffectsQuality.Get(), ComboBoxString_PostProcessQuality.Get()})
+		if (Combo) Combo->OnSelectionChanged.RemoveAll(this);
+	if (CheckBox_VSync) CheckBox_VSync->OnCheckStateChanged.RemoveAll(this);
+	if (Button_ResetGraphics) Button_ResetGraphics->OnClicked.RemoveAll(this);
 
 	// 메인 버튼
 	if (Button_Apply)    Button_Apply->OnClicked.RemoveAll(this);
@@ -195,12 +219,7 @@ void UOptionMenuWidget::InitializeSettings()
 	if (!SettingSubsystem) return;
 
 	// Subsystem에서 Saved/Default 값 로드
-	SavedSettings.MasterVolume = SettingSubsystem->GetMasterVolume();
-	SavedSettings.MouseSensitivity = SettingSubsystem->GetMouseSensitivity();
-	SavedSettings.ScreenBrightness = SettingSubsystem->GetScreenBrightness();
-	SavedSettings.Resolution = SettingSubsystem->GetSavedResolution();
-	SavedSettings.RefreshRate = SettingSubsystem->GetSavedRefreshRate();
-	SavedSettings.WindowModeIndex = SettingSubsystem->GetWindowModeIndex();
+	SavedSettings = ReadCurrentSettings();
 
 	DefaultSettings.MasterVolume = SettingSubsystem->GetDefaultMasterVolume();
 	DefaultSettings.MouseSensitivity = SettingSubsystem->GetDefaultMouseSensitivity();
@@ -208,6 +227,7 @@ void UOptionMenuWidget::InitializeSettings()
 	DefaultSettings.Resolution = SettingSubsystem->GetDefaultResolution();
 	DefaultSettings.RefreshRate = SettingSubsystem->GetDefaultRefreshRate();
 	DefaultSettings.WindowModeIndex = SettingSubsystem->GetDefaultWindowModeIndex();
+	DefaultSettings.Graphics = SettingSubsystem->GetDefaultGraphicsSettings();
 
 	// Staged 값을 Saved 값으로 초기화
 	StagedSettings = SavedSettings;
@@ -223,14 +243,26 @@ void UOptionMenuWidget::InitializeSettings()
 // Staged (데이터) -> UI (슬라이더/콤보박스)
 void UOptionMenuWidget::PopulateUIFromStagedSettings()
 {
+	TGuardValue<bool> UpdatingGuard(bUpdatingDisplayOptions, true);
 	Slider_MasterVolume->SetValue(StagedSettings.MasterVolume);
 	Slider_MouseSensitivity->SetValue(StagedSettings.MouseSensitivity);
 	Slider_ScreenBrightness->SetValue(StagedSettings.ScreenBrightness);
-	bUpdatingDisplayOptions = true;
 	ComboBoxString_ScreenResolution->SetSelectedOption(StagedSettings.Resolution);
-	bUpdatingDisplayOptions = false;
 	UpdateRefreshRateOptions();
 	ComboBoxString_WindowMode->SetSelectedIndex(StagedSettings.WindowModeIndex);
+	if (ComboBoxString_ShadowQuality) ComboBoxString_ShadowQuality->SetSelectedIndex(StagedSettings.Graphics.ShadowQuality);
+	if (ComboBoxString_TextureQuality) ComboBoxString_TextureQuality->SetSelectedIndex(StagedSettings.Graphics.TextureQuality);
+	if (ComboBoxString_EffectsQuality) ComboBoxString_EffectsQuality->SetSelectedIndex(StagedSettings.Graphics.EffectsQuality);
+	if (ComboBoxString_PostProcessQuality) ComboBoxString_PostProcessQuality->SetSelectedIndex(StagedSettings.Graphics.PostProcessQuality);
+	if (CheckBox_VSync) CheckBox_VSync->SetIsChecked(StagedSettings.Graphics.bVSync);
+	const bool bDesktop = SettingSubsystem->CanUseDesktopDisplaySettings();
+	ComboBoxString_ScreenResolution->SetIsEnabled(bDesktop);
+	ComboBoxString_WindowMode->SetIsEnabled(bDesktop);
+	if (ComboBoxString_RefreshRate) ComboBoxString_RefreshRate->SetIsEnabled(bDesktop && !ComboBoxString_RefreshRate->GetSelectedOption().IsEmpty());
+	if (CheckBox_VSync) CheckBox_VSync->SetIsEnabled(bDesktop);
+	Button_ResetScreenResolution->SetIsEnabled(bDesktop);
+	Button_ResetWindowMode->SetIsEnabled(bDesktop);
+	if (Button_ResetRefreshRate) Button_ResetRefreshRate->SetIsEnabled(bDesktop);
 }
 
 void UOptionMenuWidget::UpdateRefreshRateOptions()
@@ -242,7 +274,7 @@ void UOptionMenuWidget::UpdateRefreshRateOptions()
 		StagedSettings.RefreshRate = Rates.IsEmpty() ? 0 : FCString::Atoi(*Rates.Last());
 	}
 	if (!ComboBoxString_RefreshRate) return;
-	bUpdatingDisplayOptions = true;
+	TGuardValue<bool> UpdatingGuard(bUpdatingDisplayOptions, true);
 	ComboBoxString_RefreshRate->ClearOptions();
 	for (const FString& Rate : Rates) ComboBoxString_RefreshRate->AddOption(Rate);
 	ComboBoxString_RefreshRate->SetIsEnabled(!Rates.IsEmpty());
@@ -250,7 +282,6 @@ void UOptionMenuWidget::UpdateRefreshRateOptions()
 	{
 		ComboBoxString_RefreshRate->SetSelectedOption(FString::Printf(TEXT("%d FPS"), StagedSettings.RefreshRate));
 	}
-	bUpdatingDisplayOptions = false;
 }
 
 
@@ -294,7 +325,36 @@ void UOptionMenuWidget::OnRefreshRateChanged(FString SelectedItem, ESelectInfo::
 
 void UOptionMenuWidget::OnWindowModeChanged(FString SelectedItem, ESelectInfo::Type SelectionType)
 {
+	if (bUpdatingDisplayOptions) return;
 	StagedSettings.WindowModeIndex = ComboBoxString_WindowMode->GetSelectedIndex();
+	UpdateUIState();
+}
+
+void UOptionMenuWidget::OnGraphicsQualityChanged(FString SelectedItem, ESelectInfo::Type SelectionType)
+{
+	if (bUpdatingDisplayOptions) return;
+	auto ReadQuality = [](const UComboBoxString* Combo, int32& Value)
+	{
+		if (Combo && Combo->GetSelectedIndex() != INDEX_NONE) Value = FMath::Clamp(Combo->GetSelectedIndex(), 0, 3);
+	};
+	ReadQuality(ComboBoxString_ShadowQuality, StagedSettings.Graphics.ShadowQuality);
+	ReadQuality(ComboBoxString_TextureQuality, StagedSettings.Graphics.TextureQuality);
+	ReadQuality(ComboBoxString_EffectsQuality, StagedSettings.Graphics.EffectsQuality);
+	ReadQuality(ComboBoxString_PostProcessQuality, StagedSettings.Graphics.PostProcessQuality);
+	UpdateUIState();
+}
+
+void UOptionMenuWidget::OnVSyncChanged(bool bChecked)
+{
+	if (bUpdatingDisplayOptions || !SettingSubsystem || !SettingSubsystem->CanUseDesktopDisplaySettings()) return;
+	StagedSettings.Graphics.bVSync = bChecked;
+	UpdateUIState();
+}
+
+void UOptionMenuWidget::OnResetGraphicsClicked()
+{
+	StagedSettings.Graphics = DefaultSettings.Graphics;
+	PopulateUIFromStagedSettings();
 	UpdateUIState();
 }
 
@@ -305,11 +365,12 @@ void UOptionMenuWidget::UpdateUIState()
 	if (!SettingSubsystem) return;
 
 	// CanApply / CanReset
-	const bool bCanApply = !(StagedSettings == SavedSettings);
+	const bool bCanApply = !(StagedSettings == ReadCurrentSettings());
 	const bool bCanReset = !(StagedSettings == DefaultSettings);
 
 	Button_Apply->SetIsEnabled(bCanApply);
 	Button_ResetAll->SetIsEnabled(bCanReset);
+	if (Button_ResetGraphics) Button_ResetGraphics->SetIsEnabled(!(StagedSettings.Graphics == DefaultSettings.Graphics));
 
 	// CanReset... (개별 초기화 버튼 가시성)
 	Button_ResetMasterVolume->SetVisibility(StagedSettings.MasterVolume != DefaultSettings.MasterVolume ? ESlateVisibility::Visible : ESlateVisibility::Hidden);
@@ -324,22 +385,34 @@ void UOptionMenuWidget::UpdateUIState()
 // 메인 버튼 로직
 void UOptionMenuWidget::OnApplyClicked()
 {
-	// Staged -> Saved
-	SavedSettings = StagedSettings;
-
-	// Staged -> Subsystem
-	SettingSubsystem->SetMasterVolume(StagedSettings.MasterVolume);
-	SettingSubsystem->SetMouseSensitivity(StagedSettings.MouseSensitivity);
-	SettingSubsystem->SetScreenBrightness(StagedSettings.ScreenBrightness);
-	SettingSubsystem->SetDisplayModeValues(StagedSettings.Resolution, StagedSettings.RefreshRate);
-	SettingSubsystem->SetWindowModeIndex(StagedSettings.WindowModeIndex);
-
-	// Subsystem에 적용 및 저장 요청
-	SettingSubsystem->ApplySettings();
-	SettingSubsystem->SaveSettings();
-
-	// '적용' 버튼이 비활성화되도록 UI 상태 갱신
+	ApplyDisplaySettings(StagedSettings);
 	UpdateUIState();
+}
+
+FDisplaySettings UOptionMenuWidget::ReadCurrentSettings() const
+{
+	FDisplaySettings Values;
+	if (!SettingSubsystem) return Values;
+	Values.MasterVolume = SettingSubsystem->GetMasterVolume();
+	Values.MouseSensitivity = SettingSubsystem->GetMouseSensitivity();
+	Values.ScreenBrightness = SettingSubsystem->GetScreenBrightness();
+	Values.Resolution = SettingSubsystem->GetSavedResolution();
+	Values.RefreshRate = SettingSubsystem->GetSavedRefreshRate();
+	Values.WindowModeIndex = SettingSubsystem->GetWindowModeIndex();
+	Values.Graphics = SettingSubsystem->GetGraphicsSettings();
+	return Values;
+}
+
+void UOptionMenuWidget::ApplyDisplaySettings(const FDisplaySettings& Values)
+{
+	if (!SettingSubsystem || Values == ReadCurrentSettings()) return;
+	SettingSubsystem->SetMasterVolume(Values.MasterVolume);
+	SettingSubsystem->SetMouseSensitivity(Values.MouseSensitivity);
+	SettingSubsystem->SetScreenBrightness(Values.ScreenBrightness);
+	SettingSubsystem->SetDisplayModeValues(Values.Resolution, Values.RefreshRate);
+	SettingSubsystem->SetWindowModeIndex(Values.WindowModeIndex);
+	SettingSubsystem->SetGraphicsSettings(Values.Graphics);
+	SettingSubsystem->PreviewSettings();
 }
 
 
@@ -357,19 +430,7 @@ void UOptionMenuWidget::OnResetAllClicked()
 // '확인' 버튼 로직
 void UOptionMenuWidget::OnOKClicked()
 {
-	// Staged != Saved (변경 사항이 있는가?)
-	const bool bHasUnsavedChanges = !(StagedSettings == SavedSettings);
-
-	if (bHasUnsavedChanges)
-	{
-		// '변경사항 저장' 팝업을 띄움
-		ShowConfirmChangesPopup();
-	}
-	else
-	{
-		// 변경 사항이 없으므로 '취소'와 동일하게 그냥 닫음
-		CloseMenu(false); // false = 저장 안 함
-	}
+	CloseMenu(true);
 }
 
 
@@ -393,12 +454,18 @@ void UOptionMenuWidget::CloseMenu(bool bSaveChanges)
 {
 	if (bSaveChanges)
 	{
-		// '적용' 버튼이 활성화된 경우 (Staged != Saved)
-		if (!(StagedSettings == SavedSettings))
-		{
-			OnApplyClicked(); // 저장 로직 실행
-		}
+		ApplyDisplaySettings(StagedSettings);
+		if (SettingSubsystem) SettingSubsystem->SaveSettings();
+		SavedSettings = ReadCurrentSettings();
 	}
+	else
+	{
+		// Cancel also undoes values previewed with Apply during this menu session.
+		ApplyDisplaySettings(SavedSettings);
+	}
+	StagedSettings = SavedSettings;
+	PopulateUIFromStagedSettings();
+	UpdateUIState();
 
 	// The in-game option menu lives inside the world-space VR master menu.
 	// Closing it must resume gameplay instead of returning to the lobby main-menu page.

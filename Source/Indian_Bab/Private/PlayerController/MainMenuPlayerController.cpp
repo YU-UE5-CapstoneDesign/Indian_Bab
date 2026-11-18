@@ -11,6 +11,7 @@
 #include "Widget/MainMenuWidget.h"
 #include "Character/LobbyVRCharacter.h"
 #include "GameInstanceSubsystem/IndianBabGameInstance.h"
+#include "GameInstanceSubsystem/SettingSubsystem.h"
 #include "HeadMountedDisplayFunctionLibrary.h"
 #include "Engine/GameViewportClient.h"
 #include "Widgets/Layout/SBorder.h"
@@ -246,6 +247,8 @@ void AMainMenuPlayerController::SetMenuInputMode(EMainMenuInputMode NewInputMode
 {
 	MenuInputMode = NewInputMode;
 	ApplyMenuInputMode(MainMenuWidgetInstance);
+	if (USettingSubsystem* Settings = GetGameInstance()->GetSubsystem<USettingSubsystem>())
+		Settings->RefreshDisplaySettingsForPlayMode();
 }
 
 void AMainMenuPlayerController::HandleConnectivityLost()

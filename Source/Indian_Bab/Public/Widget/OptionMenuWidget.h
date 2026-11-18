@@ -2,12 +2,14 @@
 
 #include "CoreMinimal.h"
 #include "Blueprint/UserWidget.h"
+#include "SaveGame/SettingSaveGame.h"
 #include "OptionMenuWidget.generated.h"
 
 
 class UButton;
 class USlider;
 class UComboBoxString;
+class UCheckBox;
 class USettingSubsystem;
 class UPlayerController;
 class UConfirmChangesWidget;
@@ -29,6 +31,7 @@ struct FDisplaySettings
 	UPROPERTY() FString Resolution;
 	UPROPERTY() int32 RefreshRate = 0;
 	UPROPERTY() int32 WindowModeIndex = 0;
+	UPROPERTY() FGraphicsSettings Graphics;
 
 	// 두 설정이 동일한지 비교하기 위한 연산자
 	bool operator==(const FDisplaySettings& Other) const
@@ -38,7 +41,7 @@ struct FDisplaySettings
 			FMath::IsNearlyEqual(ScreenBrightness, Other.ScreenBrightness) &&
 			Resolution == Other.Resolution &&
 			RefreshRate == Other.RefreshRate &&
-			WindowModeIndex == Other.WindowModeIndex;
+			WindowModeIndex == Other.WindowModeIndex && Graphics == Other.Graphics;
 	}
 };
 
@@ -105,6 +108,12 @@ private:
 	UPROPERTY(meta = (BindWidget)) TObjectPtr<UComboBoxString> ComboBoxString_ScreenResolution;
 	UPROPERTY(meta = (BindWidgetOptional)) TObjectPtr<UComboBoxString> ComboBoxString_RefreshRate;
 	UPROPERTY(meta = (BindWidget)) TObjectPtr<UComboBoxString> ComboBoxString_WindowMode;
+	UPROPERTY(meta = (BindWidgetOptional)) TObjectPtr<UComboBoxString> ComboBoxString_ShadowQuality;
+	UPROPERTY(meta = (BindWidgetOptional)) TObjectPtr<UComboBoxString> ComboBoxString_TextureQuality;
+	UPROPERTY(meta = (BindWidgetOptional)) TObjectPtr<UComboBoxString> ComboBoxString_EffectsQuality;
+	UPROPERTY(meta = (BindWidgetOptional)) TObjectPtr<UComboBoxString> ComboBoxString_PostProcessQuality;
+	UPROPERTY(meta = (BindWidgetOptional)) TObjectPtr<UCheckBox> CheckBox_VSync;
+	UPROPERTY(meta = (BindWidgetOptional)) TObjectPtr<UButton> Button_ResetGraphics;
 
 	UPROPERTY(meta = (BindWidget)) TObjectPtr<UButton> Button_Apply;
 	UPROPERTY(meta = (BindWidget)) TObjectPtr<UButton> Button_ResetAll;
@@ -127,6 +136,9 @@ private:
 	UFUNCTION() void OnScreenResolutionChanged(FString SelectedItem, ESelectInfo::Type SelectionType);
 	UFUNCTION() void OnRefreshRateChanged(FString SelectedItem, ESelectInfo::Type SelectionType);
 	UFUNCTION() void OnWindowModeChanged(FString SelectedItem, ESelectInfo::Type SelectionType);
+	UFUNCTION() void OnGraphicsQualityChanged(FString SelectedItem, ESelectInfo::Type SelectionType);
+	UFUNCTION() void OnVSyncChanged(bool bChecked);
+	UFUNCTION() void OnResetGraphicsClicked();
 
 	// 메인 버튼 클릭
 	UFUNCTION() void OnApplyClicked();
@@ -156,8 +168,10 @@ private:
 	 * 활성화(Enabled) 및 가시성(Visibility) 상태를 업데이트
 	 */
 	void UpdateUIState();
+	FDisplaySettings ReadCurrentSettings() const;
+	void ApplyDisplaySettings(const FDisplaySettings& Values);
 
-	// bSaveChanges=true면 '적용'을, false면 '취소' 로직을 수행하고 메뉴를 닫음
+	// Confirm saves the current selection; Cancel restores the values captured on open.
 	void CloseMenu(bool bSaveChanges);
 
 	

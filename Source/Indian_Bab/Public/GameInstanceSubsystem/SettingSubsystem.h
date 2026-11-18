@@ -2,6 +2,7 @@
 
 #include "CoreMinimal.h"
 #include "Subsystems/GameInstanceSubsystem.h"
+#include "SaveGame/SettingSaveGame.h"
 #include "SettingSubsystem.generated.h"
 
 
@@ -24,6 +25,24 @@ public:
 
     UFUNCTION(BlueprintCallable, Category = "Settings")
     void ApplySettings();
+
+    // Apply temporarily without writing GameUserSettings.ini.
+    void PreviewSettings();
+
+    UFUNCTION(BlueprintPure, Category = "Settings|Graphics")
+    FGraphicsSettings GetGraphicsSettings() const;
+
+    UFUNCTION(BlueprintPure, Category = "Settings|Graphics")
+    FGraphicsSettings GetDefaultGraphicsSettings() const;
+
+    UFUNCTION(BlueprintCallable, Category = "Settings|Graphics")
+    void SetGraphicsSettings(const FGraphicsSettings& NewSettings);
+
+    UFUNCTION(BlueprintPure, Category = "Settings|Video")
+    bool CanUseDesktopDisplaySettings() const;
+
+    // Called when PC/VR mode becomes known; avoid reapplying graphics on every UI focus change.
+    void RefreshDisplaySettingsForPlayMode();
 
     void ApplySettingScreenResolution();
 
@@ -106,6 +125,9 @@ public:
 
 
 private:
+    void ApplySettingsInternal(bool bSaveToDisk);
+    TOptional<bool> AppliedDesktopMode;
+
     void LoadSettings();
 
     // Legacy index, used to migrate old saves.

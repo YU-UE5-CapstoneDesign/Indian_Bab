@@ -3,6 +3,10 @@
 #include "Kismet/GameplayStatics.h"
 #include "GameFramework/GameUserSettings.h"
 #include "GameInstanceSubsystem/IndianBabGameInstance.h"
+#include "PlayerController/MainGamePlayerController.h"
+#include "PlayerController/MainMenuPlayerController.h"
+#include "Character/LobbyVRCharacter.h"
+#include "HeadMountedDisplayFunctionLibrary.h"
 
 namespace
 {
@@ -63,6 +67,7 @@ void USettingSubsystem::LoadSettings()
         CurrentSettings->bHasDisplayModeValues = true;
     }
     NormalizeSavedDisplayMode();
+    CurrentSettings->GraphicsSettings.ClampValues();
 }
 
 
@@ -118,46 +123,98 @@ void USettingSubsystem::SaveSettings()
     if (CurrentSettings)
     {
         UGameplayStatics::SaveGameToSlot(CurrentSettings, CurrentSettings->SaveSlotName, CurrentSettings->UserIndex);
+        if (GEngine && !IsRunningDedicatedServer())
+            if (UGameUserSettings* Settings = GEngine->GetGameUserSettings()) Settings->SaveSettings();
     }
 }
 
 
 void USettingSubsystem::ApplySettings()
 {
-    if (!CurrentSettings) return;
+    ApplySettingsInternal(true);
+}
 
+void USettingSubsystem::PreviewSettings()
+{
+    ApplySettingsInternal(false);
+}
 
-    ApplySettingScreenResolution();
-    ApplySettingWindowMode();
+void USettingSubsystem::ApplySettingsInternal(bool bSaveToDisk)
+{
+    if (!CurrentSettings || !GEngine || IsRunningDedicatedServer()) return;
+    UGameUserSettings* Settings = GEngine->GetGameUserSettings();
+    if (!Settings) return;
+    const FGraphicsSettings Graphics = GetGraphicsSettings();
+    Settings->SetShadowQuality(Graphics.ShadowQuality);
+    Settings->SetTextureQuality(Graphics.TextureQuality);
+    Settings->SetVisualEffectQuality(Graphics.EffectsQuality);
+    Settings->SetPostProcessingQuality(Graphics.PostProcessQuality);
 
+    const bool bDesktop = CanUseDesktopDisplaySettings();
+    Settings->SetVSyncEnabled(bDesktop && Graphics.bVSync);
+    Settings->SetFrameRateLimit(bDesktop ? CurrentSettings->RefreshRate : 0.0f);
+    if (bDesktop)
+    {
+        if (CurrentSettings->ResolutionWidth > 0 && CurrentSettings->ResolutionHeight > 0)
+            Settings->SetScreenResolution(FIntPoint(CurrentSettings->ResolutionWidth, CurrentSettings->ResolutionHeight));
+        Settings->SetFullscreenMode(static_cast<EWindowMode::Type>(FMath::Clamp<int32>(CurrentSettings->WindowModeIndex, 0, 2)));
+        Settings->ApplyResolutionSettings(false);
+    }
+    // HMD presentation owns its resolution, synchronization and refresh rate.
+    Settings->ApplyNonResolutionSettings();
+    if (bSaveToDisk) Settings->SaveSettings();
+    AppliedDesktopMode = bDesktop;
 }
 
 
 void USettingSubsystem::ApplySettingScreenResolution()
 {
-    if (!CurrentSettings || !GEngine) return;
-    if (CurrentSettings->ResolutionWidth <= 0 || CurrentSettings->ResolutionHeight <= 0 || CurrentSettings->RefreshRate <= 0) return;
-    UGameUserSettings* Settings = GEngine->GetGameUserSettings();
-    if (!Settings) return;
-    Settings->SetScreenResolution(FIntPoint(CurrentSettings->ResolutionWidth, CurrentSettings->ResolutionHeight));
-    // Unreal's GameUserSettings uses this value as an FPS cap; it does not switch the monitor's physical Hz.
-    Settings->SetFrameRateLimit(CurrentSettings->RefreshRate);
-    Settings->SetVSyncEnabled(true);
-    Settings->ApplySettings(false);
+    ApplySettings();
 }
 
 
 void USettingSubsystem::ApplySettingWindowMode()
 {
-    if (GEngine)
-    {
-        UGameUserSettings* Settings = GEngine->GetGameUserSettings();
-        if (Settings)
-        {
-            Settings->SetFullscreenMode(static_cast<EWindowMode::Type>(CurrentSettings->WindowModeIndex));
-            Settings->ApplySettings(false);
-        }
-	}
+    ApplySettings();
+}
+
+FGraphicsSettings USettingSubsystem::GetGraphicsSettings() const
+{
+    FGraphicsSettings Result = CurrentSettings ? CurrentSettings->GraphicsSettings : GetDefaultGraphicsSettings();
+    Result.ClampValues();
+    return Result;
+}
+
+FGraphicsSettings USettingSubsystem::GetDefaultGraphicsSettings() const
+{
+    return GetDefault<USettingSaveGame>()->GraphicsSettings;
+}
+
+void USettingSubsystem::SetGraphicsSettings(const FGraphicsSettings& NewSettings)
+{
+    if (!CurrentSettings) return;
+    CurrentSettings->GraphicsSettings = NewSettings;
+    CurrentSettings->GraphicsSettings.ClampValues();
+}
+
+bool USettingSubsystem::CanUseDesktopDisplaySettings() const
+{
+    if (IsRunningDedicatedServer()) return false;
+    const UWorld* World = GetWorld();
+    const APlayerController* PC = World ? World->GetFirstPlayerController() : nullptr;
+    if (const AMainGamePlayerController* GamePC = Cast<AMainGamePlayerController>(PC))
+        return !GamePC->UsesVRPlayMode() && !Cast<ALobbyVRCharacter>(GamePC->GetPawn());
+    if (const AMainMenuPlayerController* MenuPC = Cast<AMainMenuPlayerController>(PC))
+        return MenuPC->IsMouseMenuInputMode();
+    if (const UIndianBabGameInstance* GI = Cast<UIndianBabGameInstance>(GetGameInstance()))
+        if (GI->HasSelectedPlayMode()) return !GI->IsVRPlayMode();
+    return !UHeadMountedDisplayFunctionLibrary::IsHeadMountedDisplayEnabled();
+}
+
+void USettingSubsystem::RefreshDisplaySettingsForPlayMode()
+{
+    if (!AppliedDesktopMode.IsSet() || AppliedDesktopMode.GetValue() != CanUseDesktopDisplaySettings())
+        ApplySettings();
 }
 
 
