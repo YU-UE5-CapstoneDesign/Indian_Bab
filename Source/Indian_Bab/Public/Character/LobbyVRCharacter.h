@@ -77,6 +77,11 @@ public:
 	void PressLeftWidgetInteraction();
 	void ReleaseLeftWidgetInteraction();
 
+	// 앉은 채로 시점 기준점(머리 위치)을 다시 잡습니다. 양쪽 트리거 동시 누름과 Ready 확정 때 호출됩니다.
+	void RecenterSeatedView();
+	bool bRightTriggerHeld = false;
+	bool bLeftTriggerHeld = false;
+
 	void ShowReadyWidget();
 	void HideReadyWidget();
 	void ShowMainGameWidget();
