@@ -32,6 +32,7 @@ private:
 	{
 		USceneComponent* Pivot = nullptr;
 		UStaticMeshComponent* Front = nullptr;
+		UStaticMeshComponent* AfterTokenFront = nullptr;
 		UStaticMeshComponent* Back = nullptr;
 		UStaticMeshComponent* Token = nullptr;
 		UTextRenderComponent* NameText = nullptr;

@@ -125,6 +125,17 @@ void ACardRevealStage::StartRevealAtView(FVector ViewLocation, FRotator ViewRota
 		Visual.Front->SetRelativeScale3D(FVector(ReferenceCardScale));
 		Visual.Front->SetVisibility(false);
 
+		if (Visual.bHasToken)
+		{
+			if (UStaticMesh* AfterTokenMesh = Entry.Card.AfterTokenCardMesh.LoadSynchronous())
+			{
+				Visual.AfterTokenFront = CreateMesh();
+				Visual.AfterTokenFront->SetStaticMesh(AfterTokenMesh);
+				Visual.AfterTokenFront->SetRelativeTransform(Visual.Front->GetRelativeTransform());
+				Visual.AfterTokenFront->SetVisibility(false);
+			}
+		}
+
 		Visual.Back = CreateMesh();
 		Visual.Back->SetStaticMesh(PlaneMesh);
 		Visual.Back->SetMaterial(0, BackMaterial);
@@ -205,7 +216,6 @@ void ACardRevealStage::Tick(float DeltaSeconds)
 		Visual.Pivot->SetRelativeLocation(FVector(TargetX * Ease, 0.0f, 4.0f + (1.0f - Ease) * 35.0f + FMath::Sin(Ease * PI) * 12.0f));
 		Visual.Pivot->SetRelativeRotation(FRotator(0.0f, 0.0f, (1.0f - Ease) * 180.0f));
 		Visual.Back->SetVisibility(CardProgress < 0.5f);
-		Visual.Front->SetVisibility(CardProgress >= 0.5f && Visual.Front->GetStaticMesh() != nullptr);
 		Visual.NameText->SetVisibility(CardProgress >= 0.9f);
 		if (Visual.WinnerText) Visual.WinnerText->SetVisibility(CardProgress >= 0.9f && ElapsedTime >= WinnerStart);
 		Visual.ValueText->SetVisibility(CardProgress >= 0.9f);
@@ -226,14 +236,18 @@ void ACardRevealStage::Tick(float DeltaSeconds)
 				UGameplayStatics::PlaySoundAtLocation(this, CoinDropSound, Visual.Token->GetComponentLocation(), CoinDropVolume);
 			}
 		}
-		if (Visual.bDropSoundPlayed) 
+		const bool bShowAfterToken = Visual.bDropSoundPlayed && Visual.AfterTokenFront != nullptr;
+		Visual.Front->SetVisibility(CardProgress >= 0.5f && !bShowAfterToken && Visual.Front->GetStaticMesh() != nullptr);
+		if (Visual.AfterTokenFront) Visual.AfterTokenFront->SetVisibility(CardProgress >= 0.5f && bShowAfterToken);
+		if (Visual.bDropSoundPlayed)
 		{
 			constexpr float ReferenceCardScale = 0.038f;
 
 			const float SwapTime = TokenStart + FMath::Max(TokenDropDuration, 0.01f);
 			const float PopTime = FMath::Clamp((ElapsedTime - SwapTime) / PopDuration, 0.0f, 1.0f);
 			const float Bump = FMath::Sin(PopTime * PI);
-			Visual.Front->SetRelativeScale3D(FVector(ReferenceCardScale * FMath::Lerp(1.0f, PopScale, Bump)));
+			UStaticMeshComponent* DisplayedFront = bShowAfterToken ? Visual.AfterTokenFront : Visual.Front;
+			DisplayedFront->SetRelativeScale3D(FVector(ReferenceCardScale * FMath::Lerp(1.0f, PopScale, Bump)));
 		}
 
 	}
