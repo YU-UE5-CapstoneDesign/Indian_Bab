@@ -532,6 +532,11 @@ void ALobbyVRCharacter::ConfigureVRSeatedState()
 			Movement->DisableMovement();
 			Movement->StopMovementImmediately();
 		}
+
+		if (bUseSeatedVROriginLocation && VROrigin)
+		{
+			VROrigin->SetRelativeLocation(SeatedVROriginLocation);
+		}
 	}
 
 	if (CameraComponent && !VRMainAnimationCameraState.bActive)
