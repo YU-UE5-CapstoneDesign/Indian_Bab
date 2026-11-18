@@ -14,8 +14,40 @@
 #include "Serialization/JsonSerializer.h"
 #include "GameFramework/PlayerController.h"
 
+THIRD_PARTY_INCLUDES_START
+#include "steam/steam_api.h"
+THIRD_PARTY_INCLUDES_END
+
 
 DEFINE_LOG_CATEGORY(LogSessionSubsystem);
+
+namespace
+{
+    // 검색 결과 로비의 현재 멤버 수를 Steam에 직접 묻는다. 알 수 없으면 -1.
+    // 검색 결과의 NumOpenPublicConnections는 로비 데이터 값이라 호스트가 UpdateSession을 부를 때만 바뀌고,
+    // 멤버 입장·이탈은 반영되지 않는다.
+    int32 QueryLobbyMemberCount(const FOnlineSession& Session)
+    {
+        if (!Session.SessionInfo.IsValid())
+        {
+            return -1;
+        }
+        const FUniqueNetId& LobbyId = Session.SessionInfo->GetSessionId();
+        if (LobbyId.GetType() != STEAM_SUBSYSTEM || LobbyId.GetSize() != sizeof(uint64))
+        {
+            return -1;  // NULL OSS(에디터) 등 Steam 로비가 아닌 세션
+        }
+        ISteamMatchmaking* Matchmaking = SteamMatchmaking();
+        if (Matchmaking == nullptr)
+        {
+            return -1;
+        }
+        uint64 RawLobbyId = 0;
+        FMemory::Memcpy(&RawLobbyId, LobbyId.GetBytes(), sizeof(RawLobbyId));
+        const int32 MemberCount = Matchmaking->GetNumLobbyMembers(CSteamID(RawLobbyId));
+        return MemberCount > 0 ? MemberCount : -1;
+    }
+}
 
 const FName USessionSubsystem::Key_MatchId = FName("MatchId");
 const FName USessionSubsystem::Key_GameStarted = FName("GameStarted");
@@ -726,7 +758,10 @@ void USessionSubsystem::OnFindSessionsComplete(bool bWasSuccessful)
         FRoomListEntry Entry;
         Entry.HostName = S.OwningUserName;
         Entry.MaxPlayers = S.SessionSettings.NumPublicConnections;
-        Entry.CurrentPlayers = FMath::Max(0, Entry.MaxPlayers - S.NumOpenPublicConnections);
+        const int32 LobbyMemberCount = QueryLobbyMemberCount(S);
+        Entry.CurrentPlayers = LobbyMemberCount >= 0
+            ? FMath::Min(LobbyMemberCount, Entry.MaxPlayers)
+            : FMath::Max(0, Entry.MaxPlayers - S.NumOpenPublicConnections);
 
         int32 GameStartedInt = 0;
         Entry.bGameStarted = S.SessionSettings.Get(Key_GameStarted, GameStartedInt) && GameStartedInt == 1;
