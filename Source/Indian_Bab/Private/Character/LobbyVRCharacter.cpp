@@ -309,6 +309,13 @@ void ALobbyVRCharacter::Client_ShowResultWidget_Implementation(const FString& Wi
 
 void ALobbyVRCharacter::PressRightWidgetInteraction()
 {
+	bRightTriggerHeld = true;
+	if (bLeftTriggerHeld)
+	{
+		// 양쪽 트리거를 동시에 누르면 시점 기준점을 다시 잡습니다.
+		RecenterSeatedView();
+	}
+
 	if (!IsLocallyControlled() || !WidgetInteractionRight || !WidgetInteractionRight->IsActive())
 	{
 		return;
@@ -319,6 +326,8 @@ void ALobbyVRCharacter::PressRightWidgetInteraction()
 
 void ALobbyVRCharacter::ReleaseRightWidgetInteraction()
 {
+	bRightTriggerHeld = false;
+
 	if (!IsLocallyControlled() || !WidgetInteractionRight || !WidgetInteractionRight->IsActive())
 	{
 		return;
@@ -339,6 +348,7 @@ void ALobbyVRCharacter::ReleaseRightWidgetInteraction()
 		if (UReadyWidget* ReadyWidget = Cast<UReadyWidget>(ReadyWidgetComponent ? ReadyWidgetComponent->GetUserWidgetObject() : nullptr))
 		{
 			ReadyWidget->ConfirmReady();
+			RecenterSeatedView();
 		}
 	}
 	if (bResultWidgetHovered)
@@ -352,6 +362,13 @@ void ALobbyVRCharacter::ReleaseRightWidgetInteraction()
 
 void ALobbyVRCharacter::PressLeftWidgetInteraction()
 {
+	bLeftTriggerHeld = true;
+	if (bRightTriggerHeld)
+	{
+		// 양쪽 트리거를 동시에 누르면 시점 기준점을 다시 잡습니다.
+		RecenterSeatedView();
+	}
+
 	if (!IsLocallyControlled() || !WidgetInteractionLeft || !WidgetInteractionLeft->IsActive())
 	{
 		return;
@@ -362,6 +379,8 @@ void ALobbyVRCharacter::PressLeftWidgetInteraction()
 
 void ALobbyVRCharacter::ReleaseLeftWidgetInteraction()
 {
+	bLeftTriggerHeld = false;
+
 	if (!IsLocallyControlled() || !WidgetInteractionLeft || !WidgetInteractionLeft->IsActive())
 	{
 		return;
@@ -382,6 +401,7 @@ void ALobbyVRCharacter::ReleaseLeftWidgetInteraction()
 		if (UReadyWidget* ReadyWidget = Cast<UReadyWidget>(ReadyWidgetComponent ? ReadyWidgetComponent->GetUserWidgetObject() : nullptr))
 		{
 			ReadyWidget->ConfirmReady();
+			RecenterSeatedView();
 		}
 	}
 	if (bResultWidgetHovered)
@@ -391,6 +411,17 @@ void ALobbyVRCharacter::ReleaseLeftWidgetInteraction()
 			ResultWidget->ConfirmBackToMainMenu();
 		}
 	}
+}
+
+void ALobbyVRCharacter::RecenterSeatedView()
+{
+	if (!IsLocallyControlled() || !UHeadMountedDisplayFunctionLibrary::IsHeadMountedDisplayEnabled())
+	{
+		return;
+	}
+
+	// 지금 머리 위치를 아바타 눈 위치(VROrigin)로 다시 맞춥니다. 바라보는 방향은 건드리지 않습니다.
+	UHeadMountedDisplayFunctionLibrary::ResetOrientationAndPosition(0.0f, EOrientPositionSelector::Position);
 }
 
 void ALobbyVRCharacter::OnRep_IsSitting()
