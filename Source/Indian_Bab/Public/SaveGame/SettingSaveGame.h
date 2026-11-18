@@ -4,6 +4,33 @@
 #include "GameFramework/SaveGame.h"
 #include "SettingSaveGame.generated.h"
 
+USTRUCT(BlueprintType)
+struct INDIAN_BAB_API FGraphicsSettings
+{
+    GENERATED_BODY()
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite) int32 ShadowQuality = 3;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite) int32 TextureQuality = 2;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite) int32 EffectsQuality = 2;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite) int32 PostProcessQuality = 2;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite) bool bVSync = true;
+
+    void ClampValues()
+    {
+        ShadowQuality = FMath::Clamp(ShadowQuality, 0, 3);
+        TextureQuality = FMath::Clamp(TextureQuality, 0, 3);
+        EffectsQuality = FMath::Clamp(EffectsQuality, 0, 3);
+        PostProcessQuality = FMath::Clamp(PostProcessQuality, 0, 3);
+    }
+
+    bool operator==(const FGraphicsSettings& Other) const
+    {
+        return ShadowQuality == Other.ShadowQuality && TextureQuality == Other.TextureQuality
+            && EffectsQuality == Other.EffectsQuality && PostProcessQuality == Other.PostProcessQuality
+            && bVSync == Other.bVSync;
+    }
+};
+
 /**
  * 
  */
@@ -45,6 +72,10 @@ public:
     /** 0: 전체 화면, 1: 테두리 없는 창모드, 2: 창 모드 */
     UPROPERTY()
     uint32 WindowModeIndex;
+
+    // Missing fields in older saves retain these defaults.
+    UPROPERTY()
+    FGraphicsSettings GraphicsSettings;
 
     // 저장 시스템을 위한 정보
 
