@@ -1123,8 +1123,9 @@ void ALobbyVRCharacter::Multicast_PlayVRMainRevolverGrabAnimation_Implementation
 
 void ALobbyVRCharacter::Multicast_CompleteVRMainRevolverGrab_Implementation()
 {
-    if (GunHoldReason != EGunHoldReason::Win || !ActiveRevolver) return;
+    // 복제 순서와 관계없이 트래킹 메시는 항상 먼저 되돌립니다.
     RestoreVRMainGrabPresentation();
+    if (GunHoldReason != EGunHoldReason::Win || !ActiveRevolver) return;
     AttachMainRevolverToRightGrip();
     bMainRevolverGrabInProgress = false;
     bMainRevolverGrabbed = true;
@@ -1262,6 +1263,7 @@ void ALobbyVRCharacter::RestoreVRMainGrabPresentation()
             if (WinAimMontage) Anim->Montage_Stop(0.0f, WinAimMontage);
             if (WinEndMontage) Anim->Montage_Stop(0.0f, WinEndMontage);
         }
+    const bool bHadHiddenMeshes = VRGrabMeshStates.Num() > 0;
     for (const FVRGrabMeshState& State : VRGrabMeshStates)
         if (UPrimitiveComponent* Component = State.Component.Get())
         {
@@ -1278,6 +1280,9 @@ void ALobbyVRCharacter::RestoreVRMainGrabPresentation()
             Component->SetAnimInstanceClass(State.AnimClass);
         }
     VRAnimationAssetStates.Reset();
+    // 저장된 상태와 관계없이 숨겼던 트래킹 메시는 무조건 다시 표시합니다.
+    if (bHadHiddenMeshes)
+        ForceRestoreTrackingMeshes();
 }
 
 void ALobbyVRCharacter::AttachRevolverToSocket()
@@ -1426,6 +1431,11 @@ void ALobbyVRCharacter::PlayGrabGunMontage(EGunHoldReason Reason)
 
 	if (!AnimInstance)
 	{
+		// 종료 콜백이 오지 않으므로 숨긴 트래킹 메시를 여기서 되돌립니다.
+		if (Reason == EGunHoldReason::Fold)
+		{
+			RestoreFoldMeshVisibility();
+		}
 		if (HasAuthority())
 		{
 			OnGrabGunMontageEnded(nullptr, false);
@@ -1461,6 +1471,11 @@ void ALobbyVRCharacter::PlayGrabGunMontage(EGunHoldReason Reason)
 		return;
 	}
 
+	if (Reason == EGunHoldReason::Fold)
+	{
+		RestoreFoldMeshVisibility();
+	}
+
 	if (HasAuthority())
 	{
 		OnGrabGunMontageEnded(nullptr, false);
@@ -1475,6 +1490,13 @@ void ALobbyVRCharacter::OnAimMyselfMontageEnded(UAnimMontage* Montage, bool bInt
 		return;
 	}
 
+	RestoreFoldMeshVisibility();
+
+	Super::OnGrabGunMontageEnded(Montage, bInterrupted);
+}
+
+void ALobbyVRCharacter::RestoreFoldMeshVisibility()
+{
 	TArray<USkeletalMeshComponent*> SkeletalMeshes;
 	GetComponents<USkeletalMeshComponent>(SkeletalMeshes);
 
@@ -1485,9 +1507,57 @@ void ALobbyVRCharacter::OnAimMyselfMontageEnded(UAnimMontage* Montage, bool bInt
 			Component->SetVisibility(true);
 		}
 	}
-	MetaHumanBodyAnimation->SetVisibility(false);
-	MetaHumanTorsoAnimation->SetVisibility(false);
-	MetaHumanFaceAnimation->SetVisibility(false);
+	if (MetaHumanBodyAnimation) MetaHumanBodyAnimation->SetVisibility(false);
+	if (MetaHumanTorsoAnimation) MetaHumanTorsoAnimation->SetVisibility(false);
+	if (MetaHumanFaceAnimation) MetaHumanFaceAnimation->SetVisibility(false);
 
-	Super::OnGrabGunMontageEnded(Montage, bInterrupted);
+	ForceRestoreTrackingMeshes();
+}
+
+void ALobbyVRCharacter::ForceRestoreTrackingMeshes()
+{
+	// 다른 플레이어에게 보이는 3인칭 트래킹 메시: 표시 + 본인에게만 숨김
+	USkeletalMeshComponent* ThirdPersonMeshes[] = {
+		ThirdPersonMetaHumanBody, ThirdPersonMetaHumanTorso, ThirdPersonMetaHumanFace};
+	for (USkeletalMeshComponent* Component : ThirdPersonMeshes)
+	{
+		if (!Component) continue;
+		Component->SetVisibility(true, false);
+		Component->SetHiddenInGame(false, false);
+		Component->SetOnlyOwnerSee(false);
+		Component->SetOwnerNoSee(true);
+	}
+
+	// 3인칭 얼굴에 붙은 그룸도 같은 규칙으로 되돌립니다.
+	UGroomComponent* Grooms[] = {
+		ThirdPersonMetaHumanHair, ThirdPersonMetaHumanEyebrows, ThirdPersonMetaHumanBeard,
+		ThirdPersonMetaHumanMustache, ThirdPersonMetaHumanEyelashes, ThirdPersonMetaHumanFuzz};
+	for (UGroomComponent* Component : Grooms)
+	{
+		if (!Component) continue;
+		Component->SetVisibility(true, false);
+		Component->SetHiddenInGame(false, false);
+		Component->SetOnlyOwnerSee(false);
+		Component->SetOwnerNoSee(true);
+	}
+
+	// 본인에게 보이는 손 트래킹 메시
+	USkeletalMeshComponent* Hands[] = {HandRight.Get(), HandLeft.Get()};
+	for (USkeletalMeshComponent* Component : Hands)
+	{
+		if (!Component) continue;
+		Component->SetVisibility(true, false);
+		Component->SetHiddenInGame(false, false);
+		Component->SetOnlyOwnerSee(true);
+		Component->SetOwnerNoSee(false);
+	}
+
+	// 애니메이션 메시는 연출이 끝나면 항상 숨깁니다.
+	USkeletalMeshComponent* AnimationMeshes[] = {
+		MetaHumanBodyAnimation, MetaHumanTorsoAnimation, MetaHumanFaceAnimation};
+	for (USkeletalMeshComponent* Component : AnimationMeshes)
+	{
+		if (Component) Component->SetVisibility(false, false);
+	}
+	if (VRAnimationRevolverMesh) VRAnimationRevolverMesh->SetVisibility(false, false);
 }
