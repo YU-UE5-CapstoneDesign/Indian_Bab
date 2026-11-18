@@ -171,6 +171,15 @@ public:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "VR|Seat")
 	float SeatHeightOffset = 0.0f;
 
+	// 앉았을 때 VROrigin(HMD 원점)을 앉은 아바타의 눈 위치로 옮깁니다.
+	// 원점이 아바타 머리보다 높으면 컨트롤러 위치가 그만큼 위로 어긋나 다른 플레이어에게 팔이 접혀 보입니다.
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "VR|Seat")
+	bool bUseSeatedVROriginLocation = true;
+
+	// 캡슐 기준 상대 위치(앞, 오른쪽, 위). 앉은 자세의 머리 본 위치에 눈 높이를 더한 값입니다.
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "VR|Seat", meta = (EditCondition = "bUseSeatedVROriginLocation"))
+	FVector SeatedVROriginLocation = FVector(10.0f, -10.0f, 28.0f);
+
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "VR|Seat|Debug")
 	bool bShowSeatDebugCapsule = false;
 
