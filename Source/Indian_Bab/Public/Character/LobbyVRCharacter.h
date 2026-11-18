@@ -283,10 +283,6 @@ private:
 	void UpdateLaserPointer(const UMotionControllerComponent* AimController, const TCHAR* PointerName) ;
 	void DrawSeatDebugCapsule() const;
 	virtual void PlayGrabGunMontage(EGunHoldReason Reason) override;
-	void OnAimMyselfMontageEnded(UAnimMontage* Montage, bool bInterrupted);
-	// Fold 연출로 숨긴 메시를 다시 표시하고 애니메이션 메시를 숨깁니다.
-	void RestoreFoldMeshVisibility();
-	// 메시 전환 몽타주가 끝나면 이전 상태와 관계없이 트래킹 메시를 정해진 표시 상태로 되돌립니다.
 	void ForceRestoreTrackingMeshes();
 
 	FTimerHandle ReadyWidgetDelayTimerHandle;
