@@ -1,4 +1,5 @@
 #include "PlayerState/MainPlayerState.h"
+#include "Character/LobbyCharacter.h"
 #include "Game/MainGameState.h"
 #include "Net/UnrealNetwork.h"
 
@@ -117,14 +118,17 @@ void AMainPlayerState::SetInitSubRevolver()
     SetAliveState(true);
 }
 
-void AMainPlayerState::SetAliveState(bool bNewAlive)
+void AMainPlayerState::SetAliveState(bool bNewAlive, EDeathReaction DeathReaction)
 {
+    if (!HasAuthority()) return;
     if (isAlive == bNewAlive)
     {
         OnAliveStateChanged.Broadcast(isAlive);
         return;
     }
 
+    if (ALobbyCharacter* Character = Cast<ALobbyCharacter>(GetPawn()))
+        Character->SetDeathPresentation(bNewAlive ? EDeathReaction::None : DeathReaction);
     isAlive = bNewAlive;
     OnRep_isAlive();
     ForceNetUpdate();
@@ -136,7 +140,7 @@ bool AMainPlayerState::ChangeSubRevolver()
     SetFoldState(true);
     if(BulletArray[TotalTriggerCount])
     {
-        SetAliveState(false);
+        SetAliveState(false, EDeathReaction::Fold);
     }
 
     TotalTriggerCount++;

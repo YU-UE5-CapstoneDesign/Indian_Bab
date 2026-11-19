@@ -44,6 +44,7 @@ public:
 	virtual void OnRep_PlayerState() override;
 	virtual void PawnClientRestart() override;
 	virtual void Tick(float DeltaTime) override;
+	virtual void PrepareDeathPresentation() override;
 
 	virtual void InitSeatedAtSeat(ASeatActor* TargetSeat) override;
 	virtual bool GetMainShotTrace(float TraceDistance, FVector& OutStart, FVector& OutEnd) const override;

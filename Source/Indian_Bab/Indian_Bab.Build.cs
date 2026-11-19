@@ -39,7 +39,7 @@ public class Indian_Bab : ModuleRules
             DynamicallyLoadedModuleNames.Add("OnlineSubsystemSteam");
         }
 
-        PrivateDependencyModuleNames.AddRange(new string[] { });
+        PrivateDependencyModuleNames.AddRange(new string[] { "AnimGraphRuntime" });
 
         // Steamworks SDK: SteamCredentials가 GetAuthSessionTicket 콜백 동기화를 위해 직접 호출.
         // 엔진 동봉 SDK 사용

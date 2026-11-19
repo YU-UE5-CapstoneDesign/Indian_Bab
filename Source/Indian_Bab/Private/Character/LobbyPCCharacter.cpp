@@ -138,6 +138,7 @@ void ALobbyPCCharacter::Server_GrabMainRevolver_Implementation()
 
 void ALobbyPCCharacter::Multicast_BeginPCMainRevolver_Implementation(ARevolver* Revolver)
 {
+	if (IsDeathPresentationActive()) return;
 	if (!Revolver) return;
 
 	// RPC에 총 참조를 함께 보내 속성 복제보다 몽타주가 먼저 시작되는 경우를 처리합니다.
@@ -152,6 +153,7 @@ void ALobbyPCCharacter::Multicast_BeginPCMainRevolver_Implementation(ARevolver* 
 
 void ALobbyPCCharacter::Multicast_CompletePCMainRevolverGrab_Implementation()
 {
+	if (IsDeathPresentationActive()) return;
 	if (GunHoldReason != EGunHoldReason::Win || !ActiveRevolver) return;
 	AttachRevolverToSocket();
 	bMainRevolverGrabbed = true;
@@ -246,6 +248,12 @@ void ALobbyPCCharacter::UpdateMainAimPresentation()
         CameraComponent->bEnableFirstPersonScale = bSavedFirstPersonScale;
     }
     bUsingSharedAimPose = bSharePose;
+}
+
+void ALobbyPCCharacter::PrepareDeathPresentation()
+{
+    // Remove the win pose's temporary FP settings before saving the normal rig.
+    UpdateMainAimPresentation();
 }
 
 void ALobbyPCCharacter::OnRep_IsSitting()

@@ -204,6 +204,7 @@ void ALobbyVRCharacter::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
 	UpdateVRPointers();
+	if (IsDeathPresentationActive()) return;
 	UpdateArmPosition();
 	SmoothReplicatedArms(DeltaTime);
 }
@@ -433,6 +434,7 @@ void ALobbyVRCharacter::OnRep_IsSitting()
 
 void ALobbyVRCharacter::Server_UpdateArm_Implementation(const FTransform& NewLeftArm, const FTransform& NewRightArm, const FTransform& NewRightAim)
 {
+	if (IsDeathPresentationActive()) return;
 	LeftArm = NewLeftArm;
 	RightArm = NewRightArm;
 	NetLeftArm = NewLeftArm;
@@ -1189,6 +1191,7 @@ void ALobbyVRCharacter::Server_GrabMainRevolver_Implementation()
 // PC처럼 집기 시작과 완료를 분리하고, 완료 콜백에서만 사격 타이머로 전환합니다.
 void ALobbyVRCharacter::Multicast_PlayVRMainRevolverGrabAnimation_Implementation(ARevolver* Revolver)
 {
+    if (IsDeathPresentationActive()) return;
     if (!IsValid(Revolver)) return;
     ActiveRevolver = Revolver;
     bMainRevolverGrabInProgress = true;
@@ -1202,6 +1205,7 @@ void ALobbyVRCharacter::Multicast_PlayVRMainRevolverGrabAnimation_Implementation
 
 void ALobbyVRCharacter::Multicast_CompleteVRMainRevolverGrab_Implementation()
 {
+    if (IsDeathPresentationActive()) return;
     RestoreVRMainGrabPresentation();
     if (GunHoldReason != EGunHoldReason::Win || !ActiveRevolver) return;
     AttachMainRevolverToRightGrip();
@@ -1211,6 +1215,7 @@ void ALobbyVRCharacter::Multicast_CompleteVRMainRevolverGrab_Implementation()
 
 void ALobbyVRCharacter::Multicast_ClearVRMainRevolver_Implementation()
 {
+    if (IsDeathPresentationActive()) return;
     RestoreVRMainGrabPresentation();
     bMainRevolverGrabInProgress = false;
     bMainRevolverGrabbed = false;
@@ -1221,6 +1226,7 @@ void ALobbyVRCharacter::Multicast_ClearVRMainRevolver_Implementation()
 
 bool ALobbyVRCharacter::PlayVRMainRevolverAnimation(ARevolver* Revolver, bool bPuttingBack)
 {
+    if (IsDeathPresentationActive()) return false;
     if (!IsValid(Revolver) || !Revolver->WeaponMesh || !MetaHumanBodyAnimation || !MainRevolverAnimationBody
         || !MainRevolverAnimationClass || !VRAnimationRevolverMesh) return false;
     const bool bFold = GunHoldReason == EGunHoldReason::Fold;
@@ -1425,6 +1431,7 @@ void ALobbyVRCharacter::OnVRMainRevolverAnimationEnded(UAnimMontage* Montage, bo
 
 void ALobbyVRCharacter::PlayPutBackGunMontage(EGunHoldReason Reason)
 {
+    if (IsDeathPresentationActive()) return;
     if (Reason != EGunHoldReason::Win && Reason != EGunHoldReason::Fold)
     {
         Super::PlayPutBackGunMontage(Reason);
@@ -1500,6 +1507,7 @@ bool ALobbyVRCharacter::GetMainShotTrace(float TraceDistance, FVector& OutStart,
 
 void ALobbyVRCharacter::PlayGrabGunMontage(EGunHoldReason Reason)
 {
+	if (IsDeathPresentationActive()) return;
 	GunHoldReason = Reason;
 
 	if (Reason == EGunHoldReason::Fold)
@@ -1512,6 +1520,11 @@ void ALobbyVRCharacter::PlayGrabGunMontage(EGunHoldReason Reason)
 	}
 
 	Super::PlayGrabGunMontage(Reason);
+}
+
+void ALobbyVRCharacter::PrepareDeathPresentation()
+{
+	RestoreVRMainGrabPresentation();
 }
 
 void ALobbyVRCharacter::ForceRestoreTrackingMeshes()

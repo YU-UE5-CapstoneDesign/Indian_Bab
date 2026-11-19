@@ -3,6 +3,7 @@
 #include "CoreMinimal.h"
 #include "GameFramework/Character.h"
 #include "Game/MainGameTypes.h"
+#include "Character/DeathPresentationTypes.h"
 #include "LobbyCharacter.generated.h"
 
 class UInputAction;
@@ -13,6 +14,8 @@ class UGroomComponent;
 class ASeatActor;
 class ARevolver;
 class UWidgetComponent;
+class UAnimSequence;
+class USkinnedMeshComponent;
 
 UCLASS()
 class INDIAN_BAB_API ALobbyCharacter : public ACharacter
@@ -32,10 +35,27 @@ protected:
 
 	// 착석 연출 종료 후 장치별 카메라 처리를 실행합니다.
 	virtual void OnSeatedCameraReady(const FRotator& SeatRotation);
+	virtual void PrepareDeathPresentation();
 
 public:
 	// Sets default values for this character's properties
 	ALobbyCharacter();
+
+	// Server selects one reaction; its timestamp also handles clients joining after death.
+	void SetDeathPresentation(EDeathReaction Reaction);
+	EDeathReaction GetDeathReactionFromSource(const FVector& SourceLocation) const;
+
+	UFUNCTION(BlueprintPure, Category = "Animation|Death")
+	bool IsDeathPresentationActive() const { return DeathState.Reaction != EDeathReaction::None; }
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Animation|Death")
+	TObjectPtr<UAnimSequence> FrontDeathAnimation;
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Animation|Death")
+	TObjectPtr<UAnimSequence> LeftDeathAnimation;
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Animation|Death")
+	TObjectPtr<UAnimSequence> RightDeathAnimation;
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Animation|Death")
+	TObjectPtr<UAnimSequence> FoldDeathAnimation;
 
 	// Called every frame
 	virtual void Tick(float DeltaTime) override;
@@ -308,5 +328,39 @@ protected:
 	void SetMainShotAimLineVisible(bool bVisible);
 
 	void SetOutline(AActor* Actor, bool bEnable);
+
+private:
+	friend class FDeathPresentationTest;
+
+	UPROPERTY(ReplicatedUsing = OnRep_DeathState)
+	FDeathPresentationState DeathState;
+
+	UFUNCTION()
+	void OnRep_DeathState();
+	void ApplyDeathPresentation();
+	void ResetDeathPresentation();
+	void UpdateDeathAnimationTime();
+	UAnimSequence* GetDeathAnimation() const;
+	bool bDeathVisualApplied = false;
+	bool bDeathPresentationPending = false;
+	bool bDeathSavedControllerYaw = false;
+	bool bDeathSavedFirstPersonFOV = false;
+	bool bDeathSavedFirstPersonScale = false;
+
+	struct FDeathMeshState
+	{
+		TWeakObjectPtr<USkeletalMeshComponent> Component;
+		TWeakObjectPtr<USkinnedMeshComponent> Leader;
+		TSubclassOf<UAnimInstance> AnimClass;
+		uint8 Mode = 0;
+		bool bPauseAnims = false;
+		bool bDisablePostProcess = false;
+		uint8 VisibilityTickOption = 0;
+	};
+	TArray<FDeathMeshState> DeathMeshStates;
+	TWeakObjectPtr<USceneComponent> DeathCameraParent;
+	FName DeathCameraSocket;
+	FTransform DeathCameraTransform;
+	bool bDeathCameraDetached = false;
 
 };

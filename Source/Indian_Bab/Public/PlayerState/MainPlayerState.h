@@ -5,6 +5,7 @@
 #include "CoreMinimal.h"
 #include "GameFramework/PlayerState.h"
 #include "CardController/CardData.h"
+#include "Character/DeathPresentationTypes.h"
 #include "MainPlayerState.generated.h"
 
 DECLARE_MULTICAST_DELEGATE_OneParam(FOnTriggerCountChanged, int32);
@@ -80,7 +81,7 @@ public:
 
 	// 처음 서브 리볼버 설정
 	void SetInitSubRevolver();
-	void SetAliveState(bool bNewAlive);
+	void SetAliveState(bool bNewAlive, EDeathReaction DeathReaction = EDeathReaction::Front);
 
 	// 리볼버 당김 횟수 변경
 	bool ChangeSubRevolver();
