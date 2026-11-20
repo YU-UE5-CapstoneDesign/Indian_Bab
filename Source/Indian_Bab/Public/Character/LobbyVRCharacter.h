@@ -36,6 +36,7 @@ class INDIAN_BAB_API ALobbyVRCharacter : public ALobbyCharacter
 	GENERATED_BODY()
 
 	friend class FVRMainRevolverGrabTest;
+	friend class FVRMainAnimationCompletionTest;
 
 public:
 	ALobbyVRCharacter();
@@ -269,6 +270,10 @@ private:
 	void Multicast_ClearVRMainRevolver();
 	virtual void PlayPutBackGunMontage(EGunHoldReason Reason) override;
 	void OnVRMainRevolverAnimationEnded(UAnimMontage* Montage, bool bInterrupted);
+	void CompleteVRMainRevolverAnimation(UAnimMontage* Montage, bool bInterrupted);
+	bool IsExpectedVRMainMontageEnd(const UAnimMontage* Montage) const;
+	TWeakObjectPtr<UAnimMontage> PendingVRMainMontageEnd;
+	bool bPendingVRMainMontageInterrupted = false;
 	void RestoreVRMainGrabPresentation();
 	bool PlayVRMainRevolverAnimation(ARevolver* Revolver, bool bPuttingBack);
 	bool bVRMainPutBackPresentation = false;
