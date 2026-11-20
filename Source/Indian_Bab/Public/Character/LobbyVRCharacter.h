@@ -262,6 +262,8 @@ private:
 	void OnVRMainRevolverAnimationEnded(UAnimMontage* Montage, bool bInterrupted);
 	void RestoreVRMainGrabPresentation();
 	bool PlayVRMainRevolverAnimation(ARevolver* Revolver, bool bPuttingBack);
+	// 3인칭 Torso에 들어간 좌석 색을 연출용 애니메이션 Torso에 복사합니다.
+	void CopySeatColorToAnimationTorso();
 	bool bVRMainPutBackPresentation = false;
 	bool bVRMainGrabPresentationActive = false;
 	UPROPERTY(VisibleAnywhere, Category = "VR|Animation")
