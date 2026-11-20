@@ -41,6 +41,7 @@ public:
 
     void ConfirmExitFromMainGame();
     void CancelExitFromMainGame();
+    UFUNCTION(BlueprintCallable, Category = "UI|Menu")
     void ShowExitConfirmation();
 	void ResumeAfterOptionsMenu();
 

@@ -14,7 +14,7 @@ void UConfirmChangesWidget::NativeConstruct()
 	}
 	if (Button_No)
 	{
-		Button_No->OnClicked.AddDynamic(this, &UConfirmChangesWidget::OnNoClicked);
+		Button_No->OnClicked.AddUniqueDynamic(this, &UConfirmChangesWidget::OnNoClicked);
 	}
 }
 
