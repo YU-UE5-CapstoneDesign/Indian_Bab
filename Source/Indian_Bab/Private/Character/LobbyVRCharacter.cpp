@@ -35,6 +35,7 @@
 #include "EnhancedInputComponent.h"
 #include "GameInstanceSubsystem/IndianBabGameInstance.h"
 #include "PlayerState/MainPlayerState.h"
+#include "Materials/MaterialInstanceDynamic.h"
 
 namespace
 {
@@ -1272,6 +1273,8 @@ bool ALobbyVRCharacter::PlayVRMainRevolverAnimation(ARevolver* Revolver, bool bP
         State.AnimClass = Component->GetAnimClass();
         Component->SetSkeletalMeshAsset(MeshAssets[Index]);
     }
+    // 연출용 Torso 메시가 들어온 직후 좌석 색을 복사합니다.
+    CopySeatColorToAnimationTorso();
     MetaHumanBodyAnimation->SetAnimInstanceClass(MainRevolverAnimationClass);
     UAnimInstance* Anim = MetaHumanBodyAnimation->GetAnimInstance();
     if (!Anim) { RestoreVRMainGrabPresentation(); return false; }
@@ -1345,6 +1348,32 @@ bool ALobbyVRCharacter::PlayVRMainRevolverAnimation(ARevolver* Revolver, bool bP
             FVector(-2.8f, 8.5f, 0.0f), FRotator(0.0f, 90.0f, -90.0f));
     }
     return true;
+}
+
+void ALobbyVRCharacter::CopySeatColorToAnimationTorso()
+{
+	if (!IsValid(ThirdPersonMetaHumanTorso) || !IsValid(MetaHumanTorsoAnimation))
+	{
+		return;
+	}
+
+	// 3인칭 Torso에 ApplySeatColor로 들어간 색을 읽어 옵니다.
+	UMaterialInterface* SourceMat = ThirdPersonMetaHumanTorso->GetMaterial(0);
+	FLinearColor Color = FLinearColor::White;
+	if (!SourceMat || !SourceMat->GetVectorParameterValue(FMaterialParameterInfo(TEXT("diffuse_color_1")), Color))
+	{
+		return;
+	}
+
+	// 연출용 애니메이션 Torso의 모든 머티리얼에 같은 색을 적용합니다.
+	const int32 NumMaterials = MetaHumanTorsoAnimation->GetNumMaterials();
+	for (int32 i = 0; i < NumMaterials; ++i)
+	{
+		if (UMaterialInstanceDynamic* MID = MetaHumanTorsoAnimation->CreateAndSetMaterialInstanceDynamic(i))
+		{
+			MID->SetVectorParameterValue(FName(TEXT("diffuse_color_1")), Color);
+		}
+	}
 }
 
 void ALobbyVRCharacter::RestoreVRMainGrabPresentation()
