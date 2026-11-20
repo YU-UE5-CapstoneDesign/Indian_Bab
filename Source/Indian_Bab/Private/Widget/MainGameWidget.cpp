@@ -53,6 +53,7 @@ void UMainGameWidget::ClearBetLog()
 
 void UMainGameWidget::NativeDestruct()
 {
+    SetVRBettingNavigationEnabled(false);
 	Super::NativeDestruct();
 	
     // 자기 자신의 BindWidget UObject들 — 재오픈 대비 일괄 해제.
@@ -517,4 +518,5 @@ void UMainGameWidget::NativeTick(const FGeometry& MyGeometry, float InDeltaTime)
 	{
 		CheckBox_133->SetIsEnabled(CanUseAddToken());
 	}
+    RefreshVRBettingSelection();
 }

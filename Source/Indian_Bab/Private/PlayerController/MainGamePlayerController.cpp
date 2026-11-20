@@ -113,6 +113,7 @@ void AMainGamePlayerController::BeginPlay()
 
 void AMainGamePlayerController::EndPlay(const EEndPlayReason::Type EndPlayReason)
 {
+	SetVRBettingInputActive(false);
 	ClearEliminationNotice();
     Client_EndCardReveal_Implementation();
     DismissExitConfirmation();
