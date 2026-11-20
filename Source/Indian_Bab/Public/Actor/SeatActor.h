@@ -35,6 +35,10 @@ public:
 	UPROPERTY(EditAnywhere, Category="Seat")
 	int32 SeatOrder = -1;
 
+	UPROPERTY(EditInstanceOnly, BlueprintReadOnly, Category = "Seat",
+    meta = (ClampMin = "0"))
+	int32 TurnOrder = 0;
+
 	// 이 자리 책상 위에 놓인 리볼버 액터 (레벨 에디터에서 각 좌석마다 할당)
 	UPROPERTY(EditInstanceOnly, Category = "Seat")
 	TObjectPtr<ARevolver> DeskRevolver;

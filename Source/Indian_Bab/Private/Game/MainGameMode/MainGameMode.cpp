@@ -530,6 +530,7 @@ void AMainGameMode::AssignInitialSeatToPlayer(APlayerController* NewPlayer)
 		GS->SeatChairArray.Add(EmptySeat);
 		GS->SeatChairArray.Sort([](const ASeatActor& A, const ASeatActor& B)
 		{
+			if (A.TurnOrder != B.TurnOrder) return A.TurnOrder < B.TurnOrder;
 			return A.SeatOrder < B.SeatOrder;
 		});
 	}
@@ -669,7 +670,12 @@ void AMainGameMode::PlayerSeated(APlayerController* SeatedPlayer, ASeatActor* Se
 		|| GS->CurrentGamePhase != EGamePhase::Lobby
 		|| SeatedChair->GetOccupant() != SeatedPlayer->GetPawn()) return;
 	GS->SeatChairArray.AddUnique(SeatedChair);
-	GS->SeatChairArray.Sort([](const ASeatActor& A, const ASeatActor& B) { return A.SeatOrder < B.SeatOrder; });
+	GS->SeatChairArray.Sort([](const ASeatActor& A, const ASeatActor& B)
+	{
+		if (A.TurnOrder != B.TurnOrder) return A.TurnOrder < B.TurnOrder;
+		return A.SeatOrder < B.SeatOrder;
+	});
+
 	// 첫 입장자만 자동 준비이며 나머지는 Ready 입력을 기다립니다.
 	CheckGameStart();
 }
