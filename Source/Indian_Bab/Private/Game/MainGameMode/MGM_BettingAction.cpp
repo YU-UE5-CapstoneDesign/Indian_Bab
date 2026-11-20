@@ -435,7 +435,10 @@ void AMainGameMode::ExecuteMainShot(bool bAutoFire)
 		{
 			UE_LOG(LogTemp, Warning, TEXT("[GM] Main revolver shot hit Player %d"), TargetPS->GetPlayerId());
 
-			TargetPS->SetAliveState(false);
+			const ALobbyCharacter* Victim = Cast<ALobbyCharacter>(TargetPS->GetPawn());
+			const EDeathReaction Reaction = Victim
+				? Victim->GetDeathReactionFromSource(HitResult.TraceStart) : EDeathReaction::Front;
+			TargetPS->SetAliveState(false, Reaction);
 
 			if (GS->AlivePlayerCount > 0)
 			{

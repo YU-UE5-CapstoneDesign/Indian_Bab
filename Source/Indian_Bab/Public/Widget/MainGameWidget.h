@@ -16,6 +16,12 @@ class AMainGamePlayerController;
 class AMainPlayerState;
 class UEliminationNoticeWidget;
 
+UENUM(BlueprintType)
+enum class EVRBettingSelection : uint8
+{
+    None, Fold, CheckCall, Raise, AddToken
+};
+
 UCLASS()
 class INDIAN_BAB_API UMainGameWidget : public UUserWidget
 {
@@ -24,6 +30,9 @@ protected:
 	virtual void NativeConstruct() override;
 	virtual void NativeTick(const FGeometry& MyGeometry, float InDeltaTime) override;
 	virtual void NativeDestruct() override;
+    virtual int32 NativePaint(const FPaintArgs& Args, const FGeometry& AllottedGeometry,
+        const FSlateRect& MyCullingRect, FSlateWindowElementList& OutDrawElements,
+        int32 LayerId, const FWidgetStyle& InWidgetStyle, bool bParentEnabled) const override;
 
 private:
     UPROPERTY(meta = (BindWidgetOptional))
@@ -123,6 +132,24 @@ private:
 	bool bAddTokenChangedBySlate = false;
 
 public:
+    void SetVRBettingNavigationEnabled(bool bEnabled);
+    void MoveVRBettingSelection(int32 Direction);
+    void ConfirmVRBettingSelection();
+    void AdjustVRRaise(int32 Direction);
+
+    UFUNCTION(BlueprintPure, Category = "VR|Betting")
+    EVRBettingSelection GetVRBettingSelection() const { return VRBettingSelection; }
+
+protected:
+    UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "VR|Betting")
+    FLinearColor VRSelectionColor = FLinearColor(1.0f, 0.7f, 0.05f, 1.0f);
+    UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "VR|Betting", meta = (ClampMin = "1.0"))
+    float VRSelectionThickness = 3.0f;
+
+    UFUNCTION(BlueprintImplementableEvent, Category = "VR|Betting")
+    void OnVRBettingSelectionChanged(EVRBettingSelection Selection);
+
+public:
 	// 플레이어 컨트롤러 및 플레이어 스테이트 등록
 	void InitWidget();
 	void SetPCReadyMode(bool bWaitingForReady);
@@ -134,6 +161,18 @@ public:
 	bool HandleVRClickAtWidgetLocation(const FVector2D& WidgetLocalHitLocation);
 
 private:
+    friend class FVRBettingNavigationTest;
+    bool CanSelectVRBettingAction(EVRBettingSelection Selection) const;
+    UWidget* GetVRBettingSelectionWidget() const;
+    void RefreshVRBettingSelection();
+    void SetVRBettingSelection(EVRBettingSelection Selection);
+    bool bVRBettingNavigationEnabled = false;
+    bool bVRWasOwningPlayerTurn = false;
+    EVRBettingSelection VRBettingSelection = EVRBettingSelection::None;
+    uint64 LastVRConfirmationFrame = MAX_uint64;
+    TOptional<bool> PendingVRTokenSelection;
+    double VRTokenRequestTime = 0.0;
+
 	bool IsButtonUnderWidgetLocation(const UButton* Button, const FVector2D& WidgetLocalHitLocation) const;
 	bool IsCheckBoxUnderWidgetLocation(const UCheckBox* CheckBox, const FVector2D& WidgetLocalHitLocation) const;
 

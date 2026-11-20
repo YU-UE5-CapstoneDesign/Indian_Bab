@@ -6,11 +6,13 @@
 #include "GroomComponent.h"
 #include "Actor/SeatActor.h"
 #include "Game/MainGameMode.h"
+#include "Game/MainGameState.h"
 #include "Camera/CameraComponent.h"
 #include "Components/SceneComponent.h"
 #include "Components/SkeletalMeshComponent.h"
 #include "Components/WidgetComponent.h"
 #include "Components/WidgetInteractionComponent.h"
+#include "Components/VRMenuNavigationComponent.h"
 #include "Components/CapsuleComponent.h"
 #include "Components/SphereComponent.h"
 #include "DrawDebugHelpers.h"
@@ -58,6 +60,7 @@ namespace
 
 ALobbyVRCharacter::ALobbyVRCharacter()
 {
+	MenuNavigation = CreateDefaultSubobject<UVRMenuNavigationComponent>(TEXT("MenuNavigation"));
 	VROrigin = CreateDefaultSubobject<USceneComponent>(TEXT("VROrigin"));
 	VROrigin->SetupAttachment(GetRootComponent());
 
@@ -85,7 +88,7 @@ ALobbyVRCharacter::ALobbyVRCharacter()
 	MetaHumanFaceAnimation->SetLeaderPoseComponent(MetaHumanBodyAnimation);
 
 	VRAnimationRevolverMesh = CreateDefaultSubobject<USkeletalMeshComponent>(TEXT("VRAnimationRevolver"));
-	VRAnimationRevolverMesh->SetupAttachment(MetaHumanBodyAnimation, FName("Revolver"));
+	VRAnimationRevolverMesh->SetupAttachment(MetaHumanBodyAnimation);
 	VRAnimationRevolverMesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 	VRAnimationRevolverMesh->SetVisibility(false);
 	VRAnimationRevolverMesh->SetHiddenInGame(true);
@@ -204,7 +207,16 @@ void ALobbyVRCharacter::PawnClientRestart()
 void ALobbyVRCharacter::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
+	// Montage-end delegates run inside PostAnimEvaluation. Mesh/AnimInstance
+	// changes and any following montage must wait until that evaluation unwinds.
+	if (UAnimMontage* EndedMontage = PendingVRMainMontageEnd.Get())
+	{
+		const bool bInterrupted = bPendingVRMainMontageInterrupted;
+		PendingVRMainMontageEnd.Reset();
+		CompleteVRMainRevolverAnimation(EndedMontage, bInterrupted);
+	}
 	UpdateVRPointers();
+	if (IsDeathPresentationActive()) return;
 	UpdateArmPosition();
 	SmoothReplicatedArms(DeltaTime);
 }
@@ -434,6 +446,7 @@ void ALobbyVRCharacter::OnRep_IsSitting()
 
 void ALobbyVRCharacter::Server_UpdateArm_Implementation(const FTransform& NewLeftArm, const FTransform& NewRightArm, const FTransform& NewRightAim)
 {
+	if (IsDeathPresentationActive()) return;
 	LeftArm = NewLeftArm;
 	RightArm = NewRightArm;
 	NetLeftArm = NewLeftArm;
@@ -686,9 +699,11 @@ void ALobbyVRCharacter::ShowReadyWidgetAfterDelay()
 
 void ALobbyVRCharacter::SetActiveVRUI(EVRActiveUI ActiveUI)
 {
+	if (CurrentVRUI != ActiveUI) bMainGameWidgetHiddenByUser = false;
+	CurrentVRUI = ActiveUI;
 	SetComponentsForVRUIState(EVRActiveUI::MainMenu, ActiveUI == EVRActiveUI::MainMenu);
 	SetComponentsForVRUIState(EVRActiveUI::Ready, ActiveUI == EVRActiveUI::Ready);
-	SetComponentsForVRUIState(EVRActiveUI::InGame, ActiveUI == EVRActiveUI::InGame);
+	SetComponentsForVRUIState(EVRActiveUI::InGame, ActiveUI == EVRActiveUI::InGame && !bMainGameWidgetHiddenByUser);
 	SetComponentsForVRUIState(EVRActiveUI::Result, ActiveUI == EVRActiveUI::Result);
 
 	UE_LOG(LogTemp, Warning, TEXT("[VR UI] Active UI changed to %s"), GetVRUIStateLogName(ActiveUI));
@@ -1062,6 +1077,15 @@ void ALobbyVRCharacter::HideMainGameWidget()
 	UE_LOG(LogTemp, Warning, TEXT("[VR UI] MainGameWidget hidden"));
 }
 
+void ALobbyVRCharacter::ToggleMainGameWidget()
+{
+	if (!IsLocallyControlled() || CurrentVRUI != EVRActiveUI::InGame) return;
+	const AMainGameState* GS = GetWorld() ? GetWorld()->GetGameState<AMainGameState>() : nullptr;
+	if (GS && GS->CurrentGamePhase != EGamePhase::Playing) return;
+	bMainGameWidgetHiddenByUser = !bMainGameWidgetHiddenByUser;
+	SetComponentsForVRUIState(EVRActiveUI::InGame, !bMainGameWidgetHiddenByUser);
+}
+
 void ALobbyVRCharacter::ShowResultWidget(const FString& WinnerName, int32 WinnerPlayerId)
 {
 	if (!IsLocallyControlled() || !ResultWidgetComponent) return;
@@ -1190,6 +1214,7 @@ void ALobbyVRCharacter::Server_GrabMainRevolver_Implementation()
 // PC처럼 집기 시작과 완료를 분리하고, 완료 콜백에서만 사격 타이머로 전환합니다.
 void ALobbyVRCharacter::Multicast_PlayVRMainRevolverGrabAnimation_Implementation(ARevolver* Revolver)
 {
+    if (IsDeathPresentationActive()) return;
     if (!IsValid(Revolver)) return;
     ActiveRevolver = Revolver;
     bMainRevolverGrabInProgress = true;
@@ -1203,6 +1228,7 @@ void ALobbyVRCharacter::Multicast_PlayVRMainRevolverGrabAnimation_Implementation
 
 void ALobbyVRCharacter::Multicast_CompleteVRMainRevolverGrab_Implementation()
 {
+    if (IsDeathPresentationActive()) return;
     RestoreVRMainGrabPresentation();
     if (GunHoldReason != EGunHoldReason::Win || !ActiveRevolver) return;
     AttachMainRevolverToRightGrip();
@@ -1212,6 +1238,7 @@ void ALobbyVRCharacter::Multicast_CompleteVRMainRevolverGrab_Implementation()
 
 void ALobbyVRCharacter::Multicast_ClearVRMainRevolver_Implementation()
 {
+    if (IsDeathPresentationActive()) return;
     RestoreVRMainGrabPresentation();
     bMainRevolverGrabInProgress = false;
     bMainRevolverGrabbed = false;
@@ -1222,6 +1249,7 @@ void ALobbyVRCharacter::Multicast_ClearVRMainRevolver_Implementation()
 
 bool ALobbyVRCharacter::PlayVRMainRevolverAnimation(ARevolver* Revolver, bool bPuttingBack)
 {
+    if (IsDeathPresentationActive()) return false;
     if (!IsValid(Revolver) || !Revolver->WeaponMesh || !MetaHumanBodyAnimation || !MainRevolverAnimationBody
         || !MainRevolverAnimationClass || !VRAnimationRevolverMesh) return false;
     const bool bFold = GunHoldReason == EGunHoldReason::Fold;
@@ -1350,6 +1378,8 @@ void ALobbyVRCharacter::CopySeatColorToAnimationTorso()
 
 void ALobbyVRCharacter::RestoreVRMainGrabPresentation()
 {
+    PendingVRMainMontageEnd.Reset();
+    bPendingVRMainMontageInterrupted = false;
     // 메시를 원래 에셋으로 되돌리기 전에 카메라를 원래 부모로 옮깁니다.
     if (VRMainAnimationCameraState.bActive && CameraComponent)
     {
@@ -1385,6 +1415,11 @@ void ALobbyVRCharacter::RestoreVRMainGrabPresentation()
             Component->SetOnlyOwnerSee(State.bOnlyOwnerSee);
         }
     VRGrabMeshStates.Reset();
+    // The saved animation rig can be empty outside the grab presentation.
+    // Remove the named socket before restoring that empty mesh.
+    if (VRAnimationRevolverMesh && MetaHumanBodyAnimation)
+        VRAnimationRevolverMesh->AttachToComponent(MetaHumanBodyAnimation,
+            FAttachmentTransformRules::KeepRelativeTransform, NAME_None);
     for (const FVRAnimationAssetState& State : VRAnimationAssetStates)
         if (USkeletalMeshComponent* Component = State.Component.Get())
         {
@@ -1420,13 +1455,24 @@ void ALobbyVRCharacter::ReturnRevolverToDesk()
 
 void ALobbyVRCharacter::OnVRMainRevolverAnimationEnded(UAnimMontage* Montage, bool bInterrupted)
 {
-    if (!bVRMainGrabPresentationActive || !Montage) return;
-    const bool bPuttingBack = bVRMainPutBackPresentation;
-    const bool bFoldMontage = Montage == AimMyselfMontage.Get() || Montage == EndAimMyselfMontage.Get();
-    const bool bExpectedMontage = bPuttingBack
+    if (!IsExpectedVRMainMontageEnd(Montage) || PendingVRMainMontageEnd.IsValid()) return;
+    PendingVRMainMontageEnd = Montage;
+    bPendingVRMainMontageInterrupted = bInterrupted;
+}
+
+bool ALobbyVRCharacter::IsExpectedVRMainMontageEnd(const UAnimMontage* Montage) const
+{
+    if (!bVRMainGrabPresentationActive || !Montage || IsDeathPresentationActive()) return false;
+    return bVRMainPutBackPresentation
         ? (Montage == WinEndMontage.Get() || Montage == EndAimMyselfMontage.Get())
         : (Montage == WinAimMontage.Get() || Montage == AimMyselfMontage.Get());
-    if (!bExpectedMontage) return;
+}
+
+void ALobbyVRCharacter::CompleteVRMainRevolverAnimation(UAnimMontage* Montage, bool bInterrupted)
+{
+    if (!IsExpectedVRMainMontageEnd(Montage)) return;
+    const bool bPuttingBack = bVRMainPutBackPresentation;
+    const bool bFoldMontage = Montage == AimMyselfMontage.Get() || Montage == EndAimMyselfMontage.Get();
     RestoreVRMainGrabPresentation();
 
     if (bFoldMontage)
@@ -1454,6 +1500,7 @@ void ALobbyVRCharacter::OnVRMainRevolverAnimationEnded(UAnimMontage* Montage, bo
 
 void ALobbyVRCharacter::PlayPutBackGunMontage(EGunHoldReason Reason)
 {
+    if (IsDeathPresentationActive()) return;
     if (Reason != EGunHoldReason::Win && Reason != EGunHoldReason::Fold)
     {
         Super::PlayPutBackGunMontage(Reason);
@@ -1529,6 +1576,7 @@ bool ALobbyVRCharacter::GetMainShotTrace(float TraceDistance, FVector& OutStart,
 
 void ALobbyVRCharacter::PlayGrabGunMontage(EGunHoldReason Reason)
 {
+	if (IsDeathPresentationActive()) return;
 	GunHoldReason = Reason;
 
 	if (Reason == EGunHoldReason::Fold)
@@ -1541,6 +1589,11 @@ void ALobbyVRCharacter::PlayGrabGunMontage(EGunHoldReason Reason)
 	}
 
 	Super::PlayGrabGunMontage(Reason);
+}
+
+void ALobbyVRCharacter::PrepareDeathPresentation()
+{
+	RestoreVRMainGrabPresentation();
 }
 
 void ALobbyVRCharacter::ForceRestoreTrackingMeshes()

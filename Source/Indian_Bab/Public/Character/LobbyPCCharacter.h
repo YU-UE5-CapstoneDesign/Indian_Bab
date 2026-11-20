@@ -48,6 +48,7 @@ protected:
     virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
     virtual void UpdateAimFromView() override;
     virtual void OnSeatedCameraReady(const FRotator& SeatRotation) override;
+    virtual void PrepareDeathPresentation() override;
     void ApplySeatedCamera(const FRotator& InitialViewRotation, const FRotator& SeatRotation);
     virtual void DrawMainShotAimLine() override;
 

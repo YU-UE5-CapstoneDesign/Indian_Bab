@@ -157,6 +157,7 @@ ALobbyCharacter::ALobbyCharacter()
 void ALobbyCharacter::BeginPlay()
 {
 	Super::BeginPlay();
+	if (IsDeathPresentationActive()) OnRep_DeathState();
 
 	if (!IsLocallyControlled()) return;
 
@@ -378,6 +379,7 @@ void ALobbyCharacter::UpdatePlayerNameColor()
 
 void ALobbyCharacter::OnAliveStateChanged(bool bIsAlive)
 {
+	if (!bIsAlive && IsDeathPresentationActive()) OnRep_DeathState();
 	UpdatePlayerNameColor();
 	if (AMainGamePlayerController* PC = Cast<AMainGamePlayerController>(GetController()))
 		PC->RefreshEliminationNotice();
@@ -387,6 +389,17 @@ void ALobbyCharacter::OnAliveStateChanged(bool bIsAlive)
 void ALobbyCharacter::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
+	if (bDeathPresentationPending)
+	{
+		bDeathPresentationPending = false;
+		ApplyDeathPresentation();
+	}
+	if (IsDeathPresentationActive())
+	{
+		UpdateDeathAnimationTime();
+		DrawMainShotAimLine();
+		return;
+	}
 
 	// 다른 플레이어의 목 회전은 복제 목표값을 매 프레임 따라가게 합니다.
 	if (GetLocalRole() == ROLE_SimulatedProxy)
@@ -436,6 +449,7 @@ void ALobbyCharacter::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutL
 	DOREPLIFETIME(ALobbyCharacter, DeskRevolver);
 	DOREPLIFETIME_CONDITION(ALobbyCharacter, NetAim, COND_SkipOwner);
 	DOREPLIFETIME(ALobbyCharacter, ActiveRevolver);
+	DOREPLIFETIME(ALobbyCharacter, DeathState);
 }
 
 void ALobbyCharacter::ServerInteract_Implementation(AActor* InteractableActor)
@@ -476,6 +490,7 @@ void ALobbyCharacter::Multicast_PlayGrabGunMontage_Implementation(EGunHoldReason
 // 총을 잡는 이유에 맞는 몽타주를 재생하고 종료 처리를 연결합니다.
 void ALobbyCharacter::PlayGrabGunMontage(EGunHoldReason Reason)
 {
+	if (IsDeathPresentationActive()) return;
 	GunHoldReason = Reason;
 
 	UAnimInstance* AnimInstance = GetMesh()->GetAnimInstance();
@@ -519,6 +534,7 @@ void ALobbyCharacter::Multicast_PutBackGunMontage_Implementation(EGunHoldReason 
 
 void ALobbyCharacter::PlayPutBackGunMontage(EGunHoldReason Reason)
 {
+	if (IsDeathPresentationActive()) return;
     UAnimInstance* AnimInstance = GetMesh()->GetAnimInstance();
 	if (!AnimInstance)
 	{
@@ -576,6 +592,7 @@ void ALobbyCharacter::OnRep_GunHoldReason()
 
 void ALobbyCharacter::AttachRevolverToSocket()
 {
+	if (IsDeathPresentationActive()) return;
 	ARevolver* RevolverToAttach = ActiveRevolver ? ActiveRevolver.Get() : DeskRevolver.Get();
 	// UE_LOG(LogTemp, Warning,
 	// 	TEXT("[AttachRevolverToSocket] Char=%s Active=%s Desk=%s Attach=%s"),
@@ -675,6 +692,7 @@ void ALobbyCharacter::StartSitTransition(ASeatActor* TargetSeat)
 
 void ALobbyCharacter::OnSitMontageEnded(UAnimMontage* Montage, bool bInterrupted)
 {
+	if (IsDeathPresentationActive()) return;
 	// 앉기 몽타주가 끝났다면 (서버에서만 실행됨)
 	if (Montage == SitMontage && HasAuthority())
 	{
@@ -702,6 +720,7 @@ void ALobbyCharacter::OnSitMontageEnded(UAnimMontage* Montage, bool bInterrupted
 
 void ALobbyCharacter::OnGrabGunMontageEnded(UAnimMontage* Montage, bool bInterrupted)
 {
+	if (IsDeathPresentationActive()) return;
 	if (bInterrupted)
 	{
 		if (HasAuthority() && GunHoldReason == EGunHoldReason::Fold)
@@ -746,6 +765,7 @@ void ALobbyCharacter::OnGrabGunMontageEnded(UAnimMontage* Montage, bool bInterru
 
 void ALobbyCharacter::OnPutBackGunMontageEnded(UAnimMontage* Montage, bool bInterrupted)
 {
+	if (IsDeathPresentationActive()) return;
 	bIsPuttingBackGun = false;
 
 	if (bInterrupted) return;
@@ -806,6 +826,7 @@ void ALobbyCharacter::Client_PrepareSit_Implementation(FVector TargetLocation, F
 
 void ALobbyCharacter::Server_UpdateAim_Implementation(FRotator NewAim)
 {
+	if (IsDeathPresentationActive()) return;
 	ReplicatedAim = NewAim;
 	NetAim = NewAim; // 서버가 값을 받아서 다른 클라이언트에게 전파
 }

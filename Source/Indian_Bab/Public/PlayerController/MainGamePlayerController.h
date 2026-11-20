@@ -37,9 +37,11 @@ public:
 
     virtual void BeginPlay() override;
     virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
+    bool CanUseVRBettingNavigation() const;
 
     void ConfirmExitFromMainGame();
     void CancelExitFromMainGame();
+    UFUNCTION(BlueprintCallable, Category = "UI|Menu")
     void ShowExitConfirmation();
 	void ResumeAfterOptionsMenu();
 

@@ -18,6 +18,7 @@ class UTurnInfoWidget;
 class UPrimitiveComponent;
 class USkeletalMesh;
 class UAnimInstance;
+class UVRMenuNavigationComponent;
 
 UENUM(BlueprintType)
 enum class EVRActiveUI : uint8
@@ -35,6 +36,7 @@ class INDIAN_BAB_API ALobbyVRCharacter : public ALobbyCharacter
 	GENERATED_BODY()
 
 	friend class FVRMainRevolverGrabTest;
+	friend class FVRMainAnimationCompletionTest;
 
 public:
 	ALobbyVRCharacter();
@@ -44,6 +46,7 @@ public:
 	virtual void OnRep_PlayerState() override;
 	virtual void PawnClientRestart() override;
 	virtual void Tick(float DeltaTime) override;
+	virtual void PrepareDeathPresentation() override;
 
 	virtual void InitSeatedAtSeat(ASeatActor* TargetSeat) override;
 	virtual bool GetMainShotTrace(float TraceDistance, FVector& OutStart, FVector& OutEnd) const override;
@@ -86,6 +89,7 @@ public:
 	void HideReadyWidget();
 	void ShowMainGameWidget();
 	void HideMainGameWidget();
+	void ToggleMainGameWidget();
 	void ShowResultWidget(const FString& WinnerName, int32 WinnerPlayerId);
 
 	UFUNCTION(BlueprintCallable, Category = "VR UI")
@@ -129,6 +133,12 @@ public:
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "VR")
 	TObjectPtr<UWidgetInteractionComponent> WidgetInteractionLeft;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "VR UI")
+	TObjectPtr<UVRMenuNavigationComponent> MenuNavigation;
+
+	EVRActiveUI CurrentVRUI = EVRActiveUI::None;
+	bool bMainGameWidgetHiddenByUser = false;
 
 	// 손에서 나가는 포인터 빔(로컬 플레이어에게만 켜짐). 에셋은 User.PointArray[0]=시작, [1]=끝을 받는다.
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "VR|Pointer")
@@ -260,6 +270,10 @@ private:
 	void Multicast_ClearVRMainRevolver();
 	virtual void PlayPutBackGunMontage(EGunHoldReason Reason) override;
 	void OnVRMainRevolverAnimationEnded(UAnimMontage* Montage, bool bInterrupted);
+	void CompleteVRMainRevolverAnimation(UAnimMontage* Montage, bool bInterrupted);
+	bool IsExpectedVRMainMontageEnd(const UAnimMontage* Montage) const;
+	TWeakObjectPtr<UAnimMontage> PendingVRMainMontageEnd;
+	bool bPendingVRMainMontageInterrupted = false;
 	void RestoreVRMainGrabPresentation();
 	bool PlayVRMainRevolverAnimation(ARevolver* Revolver, bool bPuttingBack);
 	// 3인칭 Torso에 들어간 좌석 색을 연출용 애니메이션 Torso에 복사합니다.
