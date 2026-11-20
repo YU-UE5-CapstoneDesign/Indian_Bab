@@ -18,6 +18,7 @@ class UTurnInfoWidget;
 class UPrimitiveComponent;
 class USkeletalMesh;
 class UAnimInstance;
+class UVRMenuNavigationComponent;
 
 UENUM(BlueprintType)
 enum class EVRActiveUI : uint8
@@ -87,6 +88,7 @@ public:
 	void HideReadyWidget();
 	void ShowMainGameWidget();
 	void HideMainGameWidget();
+	void ToggleMainGameWidget();
 	void ShowResultWidget(const FString& WinnerName, int32 WinnerPlayerId);
 
 	UFUNCTION(BlueprintCallable, Category = "VR UI")
@@ -130,6 +132,12 @@ public:
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "VR")
 	TObjectPtr<UWidgetInteractionComponent> WidgetInteractionLeft;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "VR UI")
+	TObjectPtr<UVRMenuNavigationComponent> MenuNavigation;
+
+	EVRActiveUI CurrentVRUI = EVRActiveUI::None;
+	bool bMainGameWidgetHiddenByUser = false;
 
 	// 손에서 나가는 포인터 빔(로컬 플레이어에게만 켜짐). 에셋은 User.PointArray[0]=시작, [1]=끝을 받는다.
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "VR|Pointer")

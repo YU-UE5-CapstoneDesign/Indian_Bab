@@ -24,7 +24,6 @@ class INDIAN_BAB_API AMainGamePlayerController : public APlayerController
 {
 	GENERATED_BODY()
 	friend class FEliminationNoticeTest;
-    friend class FVRBettingNavigationTest;
 	
 public:
     AMainGamePlayerController();
@@ -38,7 +37,7 @@ public:
 
     virtual void BeginPlay() override;
     virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
-    virtual void PlayerTick(float DeltaTime) override;
+    bool CanUseVRBettingNavigation() const;
 
     void ConfirmExitFromMainGame();
     void CancelExitFromMainGame();
@@ -59,26 +58,6 @@ public:
     void EnterEliminationSpectatorMode();
 
 private:
-    void InitializeVRBettingInput();
-    void RefreshVRBettingInput();
-    void SetVRBettingInputActive(bool bActive);
-    UMainGameWidget* FindVRBettingWidget();
-    void OnVRBettingNavigate(const FInputActionValue& Value, int32 Hand);
-    void OnVRBettingConfirm(const FInputActionValue& Value, int32 Hand);
-    void OnVRBettingConfirmReleased(const FInputActionValue& Value, int32 Hand);
-    void OnVRBettingAdjust(const FInputActionValue& Value, int32 Direction);
-    UPROPERTY(Transient)
-    TObjectPtr<UInputMappingContext> VRBettingMappingContext;
-    UPROPERTY(Transient)
-    TArray<TObjectPtr<UInputAction>> VRBettingInputActions;
-    TWeakObjectPtr<UInputComponent> VRBettingBoundInputComponent;
-    TWeakObjectPtr<UMainGameWidget> VRBettingWidget;
-    TWeakObjectPtr<UWidgetComponent> VRBettingWidgetComponent;
-    bool bVRBettingInputActive = false;
-    bool bVRStickLatched[2] = {false,false};
-    uint8 VRConfirmHeldMask = 0;
-    uint64 LastVRNavigationFrame = MAX_uint64;
-
 	void UpdateEliminationPresentation();
 	void ClearEliminationNotice();
 	bool CanPerformGameActions() const;

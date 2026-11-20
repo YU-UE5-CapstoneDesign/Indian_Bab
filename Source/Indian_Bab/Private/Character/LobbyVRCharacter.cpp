@@ -6,11 +6,13 @@
 #include "GroomComponent.h"
 #include "Actor/SeatActor.h"
 #include "Game/MainGameMode.h"
+#include "Game/MainGameState.h"
 #include "Camera/CameraComponent.h"
 #include "Components/SceneComponent.h"
 #include "Components/SkeletalMeshComponent.h"
 #include "Components/WidgetComponent.h"
 #include "Components/WidgetInteractionComponent.h"
+#include "Components/VRMenuNavigationComponent.h"
 #include "Components/CapsuleComponent.h"
 #include "Components/SphereComponent.h"
 #include "DrawDebugHelpers.h"
@@ -57,6 +59,7 @@ namespace
 
 ALobbyVRCharacter::ALobbyVRCharacter()
 {
+	MenuNavigation = CreateDefaultSubobject<UVRMenuNavigationComponent>(TEXT("MenuNavigation"));
 	VROrigin = CreateDefaultSubobject<USceneComponent>(TEXT("VROrigin"));
 	VROrigin->SetupAttachment(GetRootComponent());
 
@@ -687,9 +690,11 @@ void ALobbyVRCharacter::ShowReadyWidgetAfterDelay()
 
 void ALobbyVRCharacter::SetActiveVRUI(EVRActiveUI ActiveUI)
 {
+	if (CurrentVRUI != ActiveUI) bMainGameWidgetHiddenByUser = false;
+	CurrentVRUI = ActiveUI;
 	SetComponentsForVRUIState(EVRActiveUI::MainMenu, ActiveUI == EVRActiveUI::MainMenu);
 	SetComponentsForVRUIState(EVRActiveUI::Ready, ActiveUI == EVRActiveUI::Ready);
-	SetComponentsForVRUIState(EVRActiveUI::InGame, ActiveUI == EVRActiveUI::InGame);
+	SetComponentsForVRUIState(EVRActiveUI::InGame, ActiveUI == EVRActiveUI::InGame && !bMainGameWidgetHiddenByUser);
 	SetComponentsForVRUIState(EVRActiveUI::Result, ActiveUI == EVRActiveUI::Result);
 
 	UE_LOG(LogTemp, Warning, TEXT("[VR UI] Active UI changed to %s"), GetVRUIStateLogName(ActiveUI));
@@ -1061,6 +1066,15 @@ void ALobbyVRCharacter::HideMainGameWidget()
 
 	SetComponentsForVRUIState(EVRActiveUI::InGame, false);
 	UE_LOG(LogTemp, Warning, TEXT("[VR UI] MainGameWidget hidden"));
+}
+
+void ALobbyVRCharacter::ToggleMainGameWidget()
+{
+	if (!IsLocallyControlled() || CurrentVRUI != EVRActiveUI::InGame) return;
+	const AMainGameState* GS = GetWorld() ? GetWorld()->GetGameState<AMainGameState>() : nullptr;
+	if (GS && GS->CurrentGamePhase != EGamePhase::Playing) return;
+	bMainGameWidgetHiddenByUser = !bMainGameWidgetHiddenByUser;
+	SetComponentsForVRUIState(EVRActiveUI::InGame, !bMainGameWidgetHiddenByUser);
 }
 
 void ALobbyVRCharacter::ShowResultWidget(const FString& WinnerName, int32 WinnerPlayerId)
