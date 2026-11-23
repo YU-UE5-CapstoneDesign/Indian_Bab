@@ -25,6 +25,8 @@ class INDIAN_BAB_API UIndianBabGameInstance : public UGameInstance
 {
     GENERATED_BODY()
 
+    friend class FBGMMuteRestoreTest;
+
 public:
     UIndianBabGameInstance();
 

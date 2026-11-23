@@ -74,18 +74,8 @@ void UMainGameWidget::NativeDestruct()
 }
 
 void UMainGameWidget::OperateTimer() {
-	if (!Time) return;
-
-	AMainGameState* GS = GetWorld() ? GetWorld()->GetGameState<AMainGameState>() : nullptr;
-	if (!GS) return;
-
-	if (!GS->bTimerActive)
-	{
-		Time->SetText(FText::FromString(TEXT("-")));
-		return;
-	}
-
-	Time->SetText(FText::AsNumber(GS->GetRemainingTimeCeil()));
+	// Existing WBP_MainGame graphs may still call this. The independent
+	// UGameTimerWidget now owns the display and refresh schedule.
 }
 
 // PC 모드에서의 Ready 상태

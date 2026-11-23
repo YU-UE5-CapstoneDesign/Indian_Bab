@@ -30,6 +30,7 @@
 #include "Widget/MainGameWidget.h"
 #include "Widget/ReadyWidget.h"
 #include "Widget/TurnInfoWidget.h"
+#include "Widget/GameTimerWidget.h"
 #include "Kismet/KismetMathLibrary.h"
 #include "Net/UnrealNetwork.h"
 #include "EnhancedInputComponent.h"
@@ -167,6 +168,20 @@ ALobbyVRCharacter::ALobbyVRCharacter()
 	TurnInfoWidgetComponent->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 	TurnInfoWidgetComponent->SetVisibility(false);
 	TurnInfoWidgetComponent->SetHiddenInGame(true);
+
+	TimerWidgetComponent = CreateDefaultSubobject<UWidgetComponent>(TEXT("TimerWidget"));
+	TimerWidgetComponent->SetupAttachment(CameraComponent);
+	TimerWidgetComponent->SetWidgetSpace(EWidgetSpace::World);
+	TimerWidgetComponent->SetDrawSize(FVector2D(1920.0f, 1080.0f));
+	TimerWidgetComponent->SetRelativeLocation(FVector(90.0f, 0.0f, 8.0f));
+	TimerWidgetComponent->SetRelativeRotation(FRotator(0.0f, 180.0f, 0.0f));
+	TimerWidgetComponent->SetRelativeScale3D(FVector(0.075f));
+	TimerWidgetComponent->SetTwoSided(true);
+	TimerWidgetComponent->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+	TimerWidgetComponent->SetGenerateOverlapEvents(false);
+	TimerWidgetComponent->SetVisibility(false);
+	TimerWidgetComponent->SetHiddenInGame(true);
+	TimerWidgetComponent->SetTranslucentSortPriority(10);
 
 	ConfigureVRSeatedState();
 	ConfigureWidgetInteraction();
@@ -1086,6 +1101,18 @@ void ALobbyVRCharacter::ToggleMainGameWidget()
 	SetComponentsForVRUIState(EVRActiveUI::InGame, !bMainGameWidgetHiddenByUser);
 }
 
+void ALobbyVRCharacter::SetGameTimerWidget(UGameTimerWidget* Widget)
+{
+	if (!TimerWidgetComponent) return;
+	const bool bShow = IsLocallyControlled() && Widget;
+	if (TimerWidgetComponent->GetUserWidgetObject() != (bShow ? Widget : nullptr))
+		TimerWidgetComponent->SetWidget(bShow ? Widget : nullptr);
+	TimerWidgetComponent->SetOwnerPlayer(bShow && Widget->GetOwningPlayer() ? Widget->GetOwningPlayer()->GetLocalPlayer() : nullptr);
+	TimerWidgetComponent->SetVisibility(bShow, true);
+	TimerWidgetComponent->SetHiddenInGame(!bShow);
+	TimerWidgetComponent->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+}
+
 void ALobbyVRCharacter::ShowResultWidget(const FString& WinnerName, int32 WinnerPlayerId)
 {
 	if (!IsLocallyControlled() || !ResultWidgetComponent) return;
@@ -1231,15 +1258,19 @@ void ALobbyVRCharacter::Multicast_CompleteVRMainRevolverGrab_Implementation()
     if (IsDeathPresentationActive()) return;
     RestoreVRMainGrabPresentation();
     if (GunHoldReason != EGunHoldReason::Win || !ActiveRevolver) return;
-    AttachMainRevolverToRightGrip();
+    // PC와 동일하게 각 시점의 실제 손 소켓에 표시합니다.
+    // 컨트롤러 원점과 IK로 보정된 손의 위치/회전은 서로 다릅니다.
+    Super::AttachRevolverToSocket();
     bMainRevolverGrabInProgress = false;
     bMainRevolverGrabbed = true;
+    SetMainShotAimLineVisible(true);
 }
 
 void ALobbyVRCharacter::Multicast_ClearVRMainRevolver_Implementation()
 {
     if (IsDeathPresentationActive()) return;
     RestoreVRMainGrabPresentation();
+    ClearHeldRevolverMeshes();
     bMainRevolverGrabInProgress = false;
     bMainRevolverGrabbed = false;
     bIsPuttingBackGun = false;
@@ -1305,10 +1336,7 @@ bool ALobbyVRCharacter::PlayVRMainRevolverAnimation(ARevolver* Revolver, bool bP
         }
     }
     VRAnimationRevolverMesh->SetSkeletalMeshAsset(Revolver->WeaponMesh->GetSkeletalMeshAsset());
-    const FName Socket = MetaHumanBodyAnimation->DoesSocketExist(FName("Revolver"))
-        ? FName("Revolver") : FName("hand_r");
-    VRAnimationRevolverMesh->AttachToComponent(MetaHumanBodyAnimation,
-        FAttachmentTransformRules::SnapToTargetNotIncludingScale, Socket);
+    AttachVRAnimationRevolverMesh();
     VRAnimationRevolverMesh->SetHiddenInGame(false);
     VRAnimationRevolverMesh->SetVisibility(bPuttingBack);
     bVRMainGrabPresentationActive = true;
@@ -1431,6 +1459,32 @@ void ALobbyVRCharacter::RestoreVRMainGrabPresentation()
         ForceRestoreTrackingMeshes();
 }
 
+void ALobbyVRCharacter::AttachVRAnimationRevolverMesh()
+{
+    if (!MetaHumanBodyAnimation || !MetaHumanBodyAnimation->GetSkeletalMeshAsset() || !VRAnimationRevolverMesh) return;
+    const FName GunSocket(TEXT("Revolver"));
+    const FName HandBone(TEXT("hand_r"));
+    const bool bHasGunSocket = MetaHumanBodyAnimation->DoesSocketExist(GunSocket);
+    const FName TargetSocket = bHasGunSocket ? GunSocket : HandBone;
+    if (!MetaHumanBodyAnimation->DoesSocketExist(TargetSocket)) return;
+
+    VRAnimationRevolverMesh->AttachToComponent(MetaHumanBodyAnimation,
+        FAttachmentTransformRules::SnapToTargetNotIncludingScale, TargetSocket);
+    if (bHasGunSocket) return;
+
+    // The reduced animation body has no Revolver socket. Preserve the authored
+    // socket's hand-local grip transform instead of snapping the gun to the wrist.
+    for (USkeletalMeshComponent* ReferenceBody : {ThirdPersonMetaHumanBody, FirstPersonMetaHumanBody})
+    {
+        if (!ReferenceBody || !ReferenceBody->GetSkeletalMeshAsset()
+            || !ReferenceBody->DoesSocketExist(GunSocket) || !ReferenceBody->DoesSocketExist(HandBone)) continue;
+        const FTransform HandToGun = ReferenceBody->GetSocketTransform(GunSocket)
+            .GetRelativeTransform(ReferenceBody->GetSocketTransform(HandBone));
+        VRAnimationRevolverMesh->SetRelativeLocationAndRotation(HandToGun.GetLocation(), HandToGun.GetRotation());
+        return;
+    }
+}
+
 void ALobbyVRCharacter::AttachRevolverToSocket()
 {
     if (bVRMainGrabPresentationActive)
@@ -1532,40 +1586,6 @@ void ALobbyVRCharacter::EndPlay(const EEndPlayReason::Type EndPlayReason)
 {
     RestoreVRMainGrabPresentation();
     Super::EndPlay(EndPlayReason);
-}
-
-void ALobbyVRCharacter::AttachMainRevolverToRightGrip()
-{
-	if (!MotionControllerRightGrip || !ActiveRevolver)
-	{
-		UE_LOG(LogTemp, Warning,
-			TEXT("[VR Gun] AttachMainRevolverToRightGrip blocked. RightGrip=%s ActiveRevolver=%s"),
-			*GetNameSafe(MotionControllerRightGrip),
-			*GetNameSafe(ActiveRevolver));
-		return;
-	}
-
-	ActiveRevolver->SetActorHiddenInGame(false);
-	ActiveRevolver->AttachToComponent(MotionControllerRightGrip, FAttachmentTransformRules::SnapToTargetNotIncludingScale);
-	ActiveRevolver->SetActorRelativeLocation(FVector::ZeroVector);
-	ActiveRevolver->SetActorRelativeRotation(FRotator::ZeroRotator);
-
-	if (ActiveRevolver->CollisionSphere)
-	{
-		ActiveRevolver->CollisionSphere->SetCollisionEnabled(ECollisionEnabled::NoCollision);
-	}
-
-	bShowMainShotAimLine = true;
-	DrawMainShotAimLine();
-	ActiveRevolver->ForceNetUpdate();
-
-	UE_LOG(LogTemp, Warning,
-		TEXT("[VR Gun] MainRevolver attached to right grip. Char=%s Revolver=%s GripLocation=%s RevolverLocation=%s Authority=%s"),
-		*GetNameSafe(this),
-		*GetNameSafe(ActiveRevolver),
-		*MotionControllerRightGrip->GetComponentLocation().ToString(),
-		*ActiveRevolver->GetActorLocation().ToString(),
-		HasAuthority() ? TEXT("true") : TEXT("false"));
 }
 
 // VR은 기존 파란선과 같은 RightAim 구간을 사용합니다.

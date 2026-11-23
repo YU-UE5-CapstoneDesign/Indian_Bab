@@ -15,6 +15,7 @@ class USkeletalMeshComponent;
 class UWidgetComponent;
 class UWidgetInteractionComponent;
 class UTurnInfoWidget;
+class UGameTimerWidget;
 class UPrimitiveComponent;
 class USkeletalMesh;
 class UAnimInstance;
@@ -37,6 +38,7 @@ class INDIAN_BAB_API ALobbyVRCharacter : public ALobbyCharacter
 
 	friend class FVRMainRevolverGrabTest;
 	friend class FVRMainAnimationCompletionTest;
+	friend class FVRAnimationGunAlignmentTest;
 
 public:
 	ALobbyVRCharacter();
@@ -90,6 +92,7 @@ public:
 	void ShowMainGameWidget();
 	void HideMainGameWidget();
 	void ToggleMainGameWidget();
+	void SetGameTimerWidget(UGameTimerWidget* Widget);
 	void ShowResultWidget(const FString& WinnerName, int32 WinnerPlayerId);
 
 	UFUNCTION(BlueprintCallable, Category = "VR UI")
@@ -161,6 +164,9 @@ public:
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "VR UI")
 	TObjectPtr<UWidgetComponent> TurnInfoWidgetComponent;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "VR UI")
+	TObjectPtr<UWidgetComponent> TimerWidgetComponent;
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "VR UI")
 	TSubclassOf<UTurnInfoWidget> TurnInfoWidgetClass;
@@ -276,6 +282,7 @@ private:
 	bool bPendingVRMainMontageInterrupted = false;
 	void RestoreVRMainGrabPresentation();
 	bool PlayVRMainRevolverAnimation(ARevolver* Revolver, bool bPuttingBack);
+	void AttachVRAnimationRevolverMesh();
 	// 3인칭 Torso에 들어간 좌석 색을 연출용 애니메이션 Torso에 복사합니다.
 	void CopySeatColorToAnimationTorso();
 	bool bVRMainPutBackPresentation = false;
@@ -318,7 +325,6 @@ private:
 	};
 	FVRMainAnimationCameraState VRMainAnimationCameraState;
 
-	void AttachMainRevolverToRightGrip();
 	
 	void ConfigureLocalVRTracking();
 	void ApplyReplicatedArmTransforms();

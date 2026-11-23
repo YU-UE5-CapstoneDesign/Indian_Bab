@@ -8,6 +8,7 @@
 #include "MainGamePlayerController.generated.h"
 
 class UMainGameWidget;
+class UGameTimerWidget;
 class UDeckLeftWidget;
 class UInputMappingContext;
 class UInputAction;
@@ -24,6 +25,7 @@ class INDIAN_BAB_API AMainGamePlayerController : public APlayerController
 {
 	GENERATED_BODY()
 	friend class FEliminationNoticeTest;
+	friend class FGameTimerSeparationTest;
 	
 public:
     AMainGamePlayerController();
@@ -205,6 +207,13 @@ private:
     // UI 생성/관리
     void CreateMainGameWidget();
     void CreateDeckLeftWidget();
+    void UpdateGameTimerPresentation();
+
+    UPROPERTY(EditDefaultsOnly, Category = "UI|Timer")
+    TSubclassOf<UGameTimerWidget> GameTimerWidgetClass;
+
+    UPROPERTY(Transient)
+    TObjectPtr<UGameTimerWidget> GameTimerWidgetInstance;
 
 	// 입력 바인딩 함수
     bool CanProcessPCInput() const;

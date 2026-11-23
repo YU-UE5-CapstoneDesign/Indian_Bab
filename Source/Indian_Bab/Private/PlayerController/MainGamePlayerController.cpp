@@ -4,6 +4,7 @@
 #include "EnhancedInputComponent.h"
 #include "GameInstanceSubsystem/SettingSubsystem.h"
 #include "Widget/MainGameWidget.h"
+#include "Widget/GameTimerWidget.h"
 #include "Widget/DeckLeftWidget.h"
 #include "Game/MainGameMode.h"
 #include "Game/MainGameTypes.h"
@@ -113,6 +114,12 @@ void AMainGamePlayerController::BeginPlay()
 
 void AMainGamePlayerController::EndPlay(const EEndPlayReason::Type EndPlayReason)
 {
+	if (ALobbyVRCharacter* VR = Cast<ALobbyVRCharacter>(GetPawn())) VR->SetGameTimerWidget(nullptr);
+	if (GameTimerWidgetInstance)
+	{
+		GameTimerWidgetInstance->RemoveFromParent();
+		GameTimerWidgetInstance = nullptr;
+	}
 	ClearEliminationNotice();
     Client_EndCardReveal_Implementation();
     DismissExitConfirmation();
@@ -583,6 +590,26 @@ void AMainGamePlayerController::CreateMainGameWidget()
     }
 }
 
+void AMainGamePlayerController::UpdateGameTimerPresentation()
+{
+    if (!IsLocalController() || !GameTimerWidgetClass) return;
+    if (!GameTimerWidgetInstance)
+        GameTimerWidgetInstance = CreateWidget<UGameTimerWidget>(this, GameTimerWidgetClass);
+    if (!GameTimerWidgetInstance) return;
+
+    ALobbyVRCharacter* VR = Cast<ALobbyVRCharacter>(GetPawn());
+    if (bUseVRPlayMode || VR)
+    {
+        if (GameTimerWidgetInstance->IsInViewport()) GameTimerWidgetInstance->RemoveFromParent();
+        if (VR) VR->SetGameTimerWidget(GameTimerWidgetInstance);
+    }
+    else if (!GameTimerWidgetInstance->IsInViewport())
+    {
+        GameTimerWidgetInstance->AddToPlayerScreen(5);
+    }
+    GameTimerWidgetInstance->RefreshTimer();
+}
+
 void AMainGamePlayerController::CreateDeckLeftWidget() 
 {
     if (!DeckLeftWidgetClass) return;
@@ -828,6 +855,7 @@ void AMainGamePlayerController::ClientOnSeated_Implementation()
     // 로비 조작(WASD)을 끄고 메인 게임(마우스/UI) 조작으로 스위칭(기존)
     // 현재는 자동 착석시작이라 메인 게임 조작으로 시작
     ApplyMainGameMappingContext();
+    UpdateGameTimerPresentation();
 
     // 착석 시(게임 시작 시) 메인 게임 위젯 생성
     if (!MainGameWidgetInstance) CreateMainGameWidget();
@@ -1220,6 +1248,7 @@ void AMainGamePlayerController::ApplyLocalPlayMode()
 		Settings->RefreshDisplaySettingsForPlayMode();
 	}
     ApplyMainGameMappingContext();
+    UpdateGameTimerPresentation();
     bRMBHeld = false;
     ResetIgnoreLookInput();
     if (bUseVRPlayMode)

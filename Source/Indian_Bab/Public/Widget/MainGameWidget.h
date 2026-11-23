@@ -74,7 +74,8 @@ private:
 	UPROPERTY(EditAnywhere)
 	int32 BetNum = 1;
 
-	UPROPERTY(meta = (BindWidget))
+	// Optional while existing Blueprint timer calls are retained for asset compatibility.
+	UPROPERTY(meta = (BindWidgetOptional))
 	TObjectPtr<UTextBlock> Time;
 
 	UPROPERTY(meta = (BindWidget))

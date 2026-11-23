@@ -174,8 +174,10 @@ void UIndianBabGameInstance::PlayBGM(
 
     Volume = FMath::Clamp(Volume, 0.0f, 1.0f);
 
-    // 새 음악 페이드 인
-    ActiveBGM->FadeIn(0.75f, Volume);
+    // 사용자 볼륨과 재생 수명에 영향을 주는 페이드를 분리합니다.
+    // 볼륨 0으로 시작해도 곡은 계속 진행하고, 전환 페이드는 0~1로 적용합니다.
+    ActiveBGM->SetVolumeMultiplier(bFoldAudioActive && ActiveTrack == EBGMTrack::Game ? 0.0f : Volume);
+    ActiveBGM->FadeIn(0.75f, 1.0f);
 
     UE_LOG(
         LogIndianBabGI,
@@ -193,30 +195,18 @@ void UIndianBabGameInstance::SetBGMVolume(float NewVolume)
     // 메인 리볼버 시계 소리에도 볼륨 설정 적용
     if (IsValid(MainRevolverClockAudio))
     {
-        MainRevolverClockAudio->AdjustVolume(0.1f, Volume);
+        MainRevolverClockAudio->SetVolumeMultiplier(Volume);
     }
 
-    // 폴드 중이면 게임 BGM을 계속 0으로 유지
-    if (bFoldAudioActive)
+    if (IsValid(FoldHeartbeatAudio))
     {
-        if (IsValid(ActiveBGM) &&
-            ActiveTrack == EBGMTrack::Game)
-        {
-            ActiveBGM->AdjustVolume(0.1f, 0.0f);
-        }
-
-        if (IsValid(FoldHeartbeatAudio))
-        {
-            FoldHeartbeatAudio->AdjustVolume(0.1f, Volume);
-        }
-
-        return;
+        FoldHeartbeatAudio->SetVolumeMultiplier(Volume);
     }
 
-    // 평상시 BGM 음량 조절
+    // 폴드 중에는 게임 BGM만 음소거하고, 재생은 유지합니다.
     if (IsValid(ActiveBGM))
     {
-        ActiveBGM->AdjustVolume(0.1f, Volume);
+        ActiveBGM->SetVolumeMultiplier(bFoldAudioActive && ActiveTrack == EBGMTrack::Game ? 0.0f : Volume);
     }
 }
 
@@ -293,11 +283,12 @@ void UIndianBabGameInstance::BeginFoldAudio(int32 FoldCount)
     if (IsValid(ActiveBGM) &&
         ActiveTrack == EBGMTrack::Game)
     {
-        ActiveBGM->AdjustVolume(0.2f, 0.0f);
+        ActiveBGM->SetVolumeMultiplier(0.0f);
     }
 
     // 심장소리 시작
-    FoldHeartbeatAudio->FadeIn(0.2f, Volume);
+    FoldHeartbeatAudio->SetVolumeMultiplier(Volume);
+    FoldHeartbeatAudio->FadeIn(0.2f, 1.0f);
 
     UE_LOG(LogTemp, Log,
         TEXT("[FoldAudio] FoldCount=%d, Heartbeat=%s"),
@@ -342,7 +333,7 @@ void UIndianBabGameInstance::EndFoldAudio(bool bSurvived)
         IsValid(ActiveBGM) &&
         ActiveTrack == EBGMTrack::Game)
     {
-        ActiveBGM->AdjustVolume(0.25f, Volume);
+        ActiveBGM->SetVolumeMultiplier(Volume);
     }
 
     // 사망했거나 애니메이션이 취소되었다면 종료
@@ -595,7 +586,8 @@ void UIndianBabGameInstance::StartMainRevolverClock()
 
     if (IsValid(MainRevolverClockAudio))
     {
-        MainRevolverClockAudio->FadeIn(0.2f, Volume);
+        MainRevolverClockAudio->SetVolumeMultiplier(Volume);
+        MainRevolverClockAudio->FadeIn(0.2f, 1.0f);
     }
 }
 
