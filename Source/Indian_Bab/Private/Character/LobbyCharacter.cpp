@@ -406,7 +406,10 @@ void ALobbyCharacter::Tick(float DeltaTime)
 	{
 		if (bHasNetAim)
 		{
-			ReplicatedAim = FMath::RInterpTo(ReplicatedAim, NetAim, DeltaTime, RemoteAimInterpSpeed);
+			AimSegmentElapsed += DeltaTime;
+			const float Alpha = AimSegmentDuration > KINDA_SMALL_NUMBER
+				? FMath::Clamp(AimSegmentElapsed / AimSegmentDuration, 0.0f, 1.0f) : 1.0f;
+			ReplicatedAim = (AimSegmentStart + (NetAim - AimSegmentStart).GetNormalized() * Alpha).GetNormalized();
 		}
 	}
 	else if (HasAuthority() && IsLocallyControlled())
@@ -419,13 +422,26 @@ void ALobbyCharacter::Tick(float DeltaTime)
 	DrawMainShotAimLine();
 }
 
+float ALobbyCharacter::ConsumeNetReceiveInterval(double& LastReceiveTime) const
+{
+	const double Now = GetWorld() ? GetWorld()->GetTimeSeconds() : 0.0;
+	const double Interval = LastReceiveTime > 0.0 ? Now - LastReceiveTime : RemoteMaxInterpInterval;
+	LastReceiveTime = Now;
+	return FMath::Clamp(static_cast<float>(Interval), 1.0f / 120.0f, RemoteMaxInterpInterval);
+}
+
 void ALobbyCharacter::OnRep_NetAim()
 {
+	const float Interval = ConsumeNetReceiveInterval(LastNetAimTime);
 	if (!bHasNetAim)
 	{
 		bHasNetAim = true;
 		ReplicatedAim = NetAim;
 	}
+	// 지금 보이는 값에서 새 목표까지, 값이 오는 간격만큼의 시간 동안 일정한 속도로 이동합니다.
+	AimSegmentStart = ReplicatedAim;
+	AimSegmentElapsed = 0.0f;
+	AimSegmentDuration = Interval;
 }
 
 void ALobbyCharacter::UpdateAimFromView()

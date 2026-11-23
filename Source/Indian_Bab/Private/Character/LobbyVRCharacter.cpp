@@ -473,7 +473,14 @@ void ALobbyVRCharacter::Server_UpdateArm_Implementation(const FTransform& NewLef
 
 void ALobbyVRCharacter::OnRep_ArmTransforms()
 {
-	// 첫 값만 바로 맞추고, 이후에는 Tick의 보간이 목표값을 따라갑니다.
+	// 두 손 값은 같은 패킷으로 오므로 같은 프레임에 두 번 불릴 수 있습니다. 그때는 구간을 다시 시작하지 않습니다.
+	const double Now = GetWorld() ? GetWorld()->GetTimeSeconds() : 0.0;
+	if (bHasNetArms && ArmSegmentElapsed <= 0.0f && FMath::IsNearlyEqual(Now, LastNetArmTime))
+	{
+		return;
+	}
+
+	const float Interval = ConsumeNetReceiveInterval(LastNetArmTime);
 	if (!bHasNetArms)
 	{
 		bHasNetArms = true;
@@ -481,6 +488,11 @@ void ALobbyVRCharacter::OnRep_ArmTransforms()
 		RightArm = NetRightArm;
 		ApplyReplicatedArmTransforms();
 	}
+	// 지금 보이는 손 위치에서 새 목표까지, 값이 오는 간격만큼의 시간 동안 일정한 속도로 이동합니다.
+	LeftArmSegmentStart = LeftArm;
+	RightArmSegmentStart = RightArm;
+	ArmSegmentElapsed = 0.0f;
+	ArmSegmentDuration = Interval;
 }
 
 void ALobbyVRCharacter::SmoothReplicatedArms(float DeltaTime)
@@ -490,24 +502,28 @@ void ALobbyVRCharacter::SmoothReplicatedArms(float DeltaTime)
 		return;
 	}
 
-	auto Smooth = [this, DeltaTime](FTransform& Current, const FTransform& Target)
+	ArmSegmentElapsed += DeltaTime;
+	const float Alpha = ArmSegmentDuration > KINDA_SMALL_NUMBER
+		? FMath::Clamp(ArmSegmentElapsed / ArmSegmentDuration, 0.0f, 1.0f) : 1.0f;
+
+	auto Smooth = [this, Alpha](FTransform& Current, const FTransform& Start, const FTransform& Target)
 	{
-		if (Target.ContainsNaN())
+		if (Target.ContainsNaN() || Start.ContainsNaN())
 		{
 			return;
 		}
-		if (FVector::DistSquared(Current.GetLocation(), Target.GetLocation()) > FMath::Square(RemoteArmSnapDistance))
+		if (FVector::DistSquared(Start.GetLocation(), Target.GetLocation()) > FMath::Square(RemoteArmSnapDistance))
 		{
 			Current = Target;
 			return;
 		}
-		Current.SetLocation(FMath::VInterpTo(Current.GetLocation(), Target.GetLocation(), DeltaTime, RemoteArmInterpSpeed));
-		Current.SetRotation(FMath::QInterpTo(Current.GetRotation(), Target.GetRotation(), DeltaTime, RemoteArmInterpSpeed));
+		Current.SetLocation(FMath::Lerp(Start.GetLocation(), Target.GetLocation(), Alpha));
+		Current.SetRotation(FQuat::Slerp(Start.GetRotation(), Target.GetRotation(), Alpha));
 		Current.SetScale3D(Target.GetScale3D());
 	};
 
-	Smooth(LeftArm, NetLeftArm);
-	Smooth(RightArm, NetRightArm);
+	Smooth(LeftArm, LeftArmSegmentStart, NetLeftArm);
+	Smooth(RightArm, RightArmSegmentStart, NetRightArm);
 	ApplyReplicatedArmTransforms();
 }
 

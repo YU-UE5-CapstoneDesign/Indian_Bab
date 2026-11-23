@@ -171,11 +171,20 @@ public:
 	UFUNCTION()
 	void OnRep_NetAim();
 
-	// 다른 플레이어의 목 회전이 목표값을 따라가는 속도. 클수록 빠르게 따라가고 덜 부드럽습니다.
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Network", meta = (ClampMin = "1.0"))
-	float RemoteAimInterpSpeed = 20.0f;
+	// 복제 값 사이를 보간하는 최대 시간(초). 값이 오는 간격을 재서 그 시간 동안 일정한 속도로 따라가되, 이 값보다 길게는 끌지 않습니다.
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Network", meta = (ClampMin = "0.01"))
+	float RemoteMaxInterpInterval = 0.1f;
 
 	bool bHasNetAim = false;
+
+	// 보간 구간: 직전 값을 받은 순간의 표시값에서 새 목표값까지, 측정한 수신 간격 동안 일정한 속도로 이동합니다.
+	FRotator AimSegmentStart = FRotator::ZeroRotator;
+	float AimSegmentElapsed = 0.0f;
+	float AimSegmentDuration = 0.0f;
+	double LastNetAimTime = 0.0;
+
+	// 수신 간격을 재서 다음 보간 구간 길이(초)를 돌려줍니다.
+	float ConsumeNetReceiveInterval(double& LastReceiveTime) const;
 
 	bool bMainRevolverGrabInProgress = false;
 

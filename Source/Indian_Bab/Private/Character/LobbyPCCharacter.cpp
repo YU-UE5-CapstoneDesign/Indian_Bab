@@ -201,6 +201,19 @@ void ALobbyPCCharacter::OnInteract(const FInputActionValue& Value)
 
 }
 
+FRotator ALobbyPCCharacter::GetBaseAimRotation() const
+{
+	// 엔진 기본값(RemoteViewPitch)은 서버 틱마다 1.4도 단위로만 바뀌어 위아래 고개가 계단처럼 움직입니다.
+	// ReplicatedAim = 액터 회전 - 컨트롤 회전이므로 컨트롤 Pitch = 액터 Pitch - ReplicatedAim.Pitch.
+	if (GetLocalRole() == ROLE_SimulatedProxy && bHasNetAim)
+	{
+		FRotator Result = GetActorRotation();
+		Result.Pitch = FRotator::NormalizeAxis(Result.Pitch - ReplicatedAim.Pitch);
+		return Result;
+	}
+	return Super::GetBaseAimRotation();
+}
+
 void ALobbyPCCharacter::UpdateAimFromView()
 {
     UpdateMainAimPresentation();
