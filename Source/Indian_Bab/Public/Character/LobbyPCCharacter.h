@@ -19,6 +19,8 @@ public:
     virtual void InitSeatedAtSeat(ASeatActor* TargetSeat) override;
     virtual bool GetMainShotTrace(float TraceDistance, FVector& OutStart, FVector& OutEnd) const override;
     virtual void ReturnMainRevolverToTableImmediately() override;
+    // 다른 플레이어 화면에서는 AnimBP가 읽는 시선 위아래 각도를 보간된 목 회전으로 돌려줍니다.
+    virtual FRotator GetBaseAimRotation() const override;
 
     // PC 즉시 착석과 소유 클라이언트 위치 동기화
     void InitPCSeatedAtSeat(ASeatActor* TargetSeat);

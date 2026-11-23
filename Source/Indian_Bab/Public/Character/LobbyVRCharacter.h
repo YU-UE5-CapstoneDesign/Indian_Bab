@@ -235,9 +235,12 @@ public:
 	UPROPERTY(ReplicatedUsing=OnRep_ArmTransforms)
 	FTransform NetRightArm;
 
-	// 다른 플레이어의 손이 목표값을 따라가는 속도. 클수록 빠르게 따라가고 덜 부드럽습니다.
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Network", meta = (ClampMin = "1.0"))
-	float RemoteArmInterpSpeed = 20.0f;
+	// 손 보간 구간(목 회전과 같은 방식). 시작 값은 새 목표를 받은 순간의 표시값입니다.
+	FTransform LeftArmSegmentStart;
+	FTransform RightArmSegmentStart;
+	float ArmSegmentElapsed = 0.0f;
+	float ArmSegmentDuration = 0.0f;
+	double LastNetArmTime = 0.0;
 
 	// 목표와 이 거리 이상 벌어지면 따라가지 않고 바로 맞춥니다.
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Network", meta = (ClampMin = "0.0"))
